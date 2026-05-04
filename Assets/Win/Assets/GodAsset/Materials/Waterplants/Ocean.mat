@@ -141,7 +141,7 @@ Material:
     - _FoamDistance: 0.2
     - _FoamScale: 100
     - _FoamSpeed: 0.5
-    - _Foam_Amount: 0.41
+    - _Foam_Amount: 0.25
     - _Foam_Density: 0.15
     - _Foam_Speed: 0.5
     - _GlossMapScale: 0
@@ -198,7 +198,7 @@ Material:
     - _FoamScale: {r: 100, g: 400, b: 0, a: 0}
     - _FoamScale_1: {r: 100, g: 200, b: 0, a: 0}
     - _Foam_Color: {r: 1, g: 1, b: 1, a: 1}
-    - _Foam_Scale: {r: 1000, g: 1000, b: 0, a: 0}
+    - _Foam_Scale: {r: 0, g: 100, b: 0, a: 0}
     - _RefractionScale: {r: 3, g: 12, b: 0, a: 0}
     - _Refraction_Scale: {r: 140, g: 56, b: 0, a: 0}
     - _RimColor: {r: 1, g: 1, b: 1, a: 1}
