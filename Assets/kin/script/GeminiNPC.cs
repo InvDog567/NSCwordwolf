@@ -1,29 +1,30 @@
+using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 using System.Collections;
-using System.Text;
 
 public class GeminiNPC : MonoBehaviour
 {
-    [Header("Settings")]
-    [SerializeField] private string apiKey = "AIzaSyCha0PhgUIiKU3H7DeWn_ZS-2u4co95lqA";
+    // ใส่ API Key ของคุณตรงนี้
+    [SerializeField] private string apiKey = "YOUR_API_KEY_HERE";
+    private string modelName = "models/gemini-2.0-flash";
 
-    // ใช้ชื่อรุ่นแบบเต็มตามที่ API ต้องการ
-    // ลองเปลี่ยนเป็นชื่อนี้ครับ (ตัวอักษรเล็กทั้งหมด และเช็คตัวสะกดให้เป๊ะ)
-    private string modelName = "models/gemini-1.5-flash";
-
+    // ฟังก์ชันสำหรับเรียกใช้งานจากภายนอก
     void Start()
     {
-        // สั่งให้ทำงานทันทีที่กด Play
-        StartCoroutine(SendMessageToGemini("Hello, who are you?"));
+        Talk("Hello, are you there?");
+    }
+    public void Talk(string message)
+    {
+        StartCoroutine(SendMessageToGemini(message));
     }
 
     IEnumerator SendMessageToGemini(string playerText)
     {
-        // 2. ใช้ v1beta ตามที่ลิสต์ระบุว่ารองรับ generateContent
-        string url = $"https://generativelanguage.googleapis.com/v1/{modelName}:generateContent?key={apiKey}";
+        // 1. ใช้ v1beta เพราะเป็นรุ่นใหม่
+        string url = $"https://generativelanguage.googleapis.com/v1beta/{modelName}:generateContent?key={apiKey}";
 
-        // 3. อย่าลืมเปลี่ยนส่วนรับข้อมูลกลับเป็นแบบส่งข้อความ (เหมือนโค้ดอันแรกสุดที่เราทำ)
+        // 2. โครงสร้าง JSON 
         string jsonData = "{\"contents\":[{\"parts\":[{\"text\":\"" + playerText + "\"}]}]}";
 
         using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
@@ -37,7 +38,7 @@ public class GeminiNPC : MonoBehaviour
 
             if (request.result == UnityWebRequest.Result.Success)
             {
-                Debug.Log("<color=green>สำเร็จแล้ว!</color> AI ตอบว่า: " + request.downloadHandler.text);
+                Debug.Log("<color=green>สำเร็จ!</color> NPC ตอบว่า: " + request.downloadHandler.text);
             }
             else
             {
