@@ -3,7 +3,7 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
 
-public class GameManager : MonoBehaviour
+public class StartManager : MonoBehaviour
 {
     // ========== MAIN MENU BUTTONS ==========
     [SerializeField] private Button playButton;
