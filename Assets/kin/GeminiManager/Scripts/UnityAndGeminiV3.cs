@@ -98,7 +98,7 @@ public class UnityAndGeminiV3: MonoBehaviour
     public TMP_InputField inputField;
     public TMP_Text uiText;
     public string botInstructions;
-    private TextContent[] chatHistory;
+    private List<TextContent> chatHistory;
 
 
     [Header("Prompt Function")]
@@ -148,7 +148,7 @@ public class UnityAndGeminiV3: MonoBehaviour
     {
         UnityAndGeminiKey jsonApiKey = JsonUtility.FromJson<UnityAndGeminiKey>(jsonApi.text);
         apiKey = jsonApiKey.key;   
-        chatHistory = new TextContent[] { };
+        chatHistory = new List<TextContent>();
         if (prompt != ""){StartCoroutine( SendPromptRequestToGemini(prompt));};
 
         // Image Generation is now a paid feature. The generation of images can produce charges at your credit card.
@@ -198,77 +198,85 @@ public class UnityAndGeminiV3: MonoBehaviour
         StartCoroutine( SendChatRequestToGemini(userMessage));
     }
 
-    private IEnumerator SendChatRequestToGemini(string newMessage)
+    private IEnumerator SendChatRequestToGemini(string userMessage)
     {
-
         string url = $"{apiEndpoint}?key={apiKey}";
-     
+
+        // Add user message to history
         TextContent userContent = new TextContent
         {
             role = "user",
             parts = new TextPart[]
             {
-                new TextPart { text = newMessage }
+                new TextPart { text = userMessage }
             }
         };
 
+        chatHistory.Add(userContent);
+
+        // Build system instruction
         TextContent instruction = new TextContent
         {
             parts = new TextPart[]
             {
-                new TextPart {text = botInstructions}
+                new TextPart { text = botInstructions }
             }
-        }; 
+        };
 
-        List<TextContent> contentsList = new List<TextContent>(chatHistory);
-        contentsList.Add(userContent);
-        chatHistory = contentsList.ToArray(); 
-
-        ChatRequest chatRequest = new ChatRequest { contents = chatHistory, system_instruction = instruction };
-
+        // Build request object and serialize
+        ChatRequest chatRequest = new ChatRequest { contents = chatHistory.ToArray(), system_instruction = instruction };
         string jsonData = JsonUtility.ToJson(chatRequest);
 
-        byte[] jsonToSend = new System.Text.UTF8Encoding().GetBytes(jsonData);
+        // Inject generationConfig into the JSON (JsonUtility won't serialize unknown anonymous fields)
+        int insertPos = jsonData.LastIndexOf('}');
+        if (insertPos > 0)
+        {
+            string genConfig = ",\"generationConfig\":{\"temperature\":0.7,\"maxOutputTokens\":800}";
+            jsonData = jsonData.Insert(insertPos, genConfig);
+        }
 
-        // Create a UnityWebRequest with the JSON data
-        using (UnityWebRequest www = new UnityWebRequest(url, "POST")){
-            www.uploadHandler = new UploadHandlerRaw(jsonToSend);
-            www.downloadHandler = new DownloadHandlerBuffer();
-            www.SetRequestHeader("Content-Type", "application/json");
+        byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(jsonData);
 
-            yield return www.SendWebRequest();
+        using (UnityWebRequest request = new UnityWebRequest(url, "POST"))
+        {
+            request.uploadHandler = new UploadHandlerRaw(bodyRaw);
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
 
-            if (www.result != UnityWebRequest.Result.Success) {
-                Debug.LogError(www.error);
-            } else {
+            yield return request.SendWebRequest();
+
+            if (request.result == UnityWebRequest.Result.Success)
+            {
                 Debug.Log("Request complete!");
-                TextResponse response = JsonUtility.FromJson<TextResponse>(www.downloadHandler.text);
-                if (response.candidates.Length > 0 && response.candidates[0].content.parts.Length > 0)
-                    {
-                        //This is the response to your request
-                        string reply = response.candidates[0].content.parts[0].text;
-                        TextContent botContent = new TextContent
-                        {
-                            role = "model",
-                            parts = new TextPart[]
-                            {
-                                new TextPart { text = reply }
-                            }
-                        };
+                TextResponse response = JsonUtility.FromJson<TextResponse>(request.downloadHandler.text);
+                if (response != null && response.candidates != null && response.candidates.Length > 0 &&
+                    response.candidates[0].content != null && response.candidates[0].content.parts != null && response.candidates[0].content.parts.Length > 0)
+                {
+                    string aiResponse = response.candidates[0].content.parts[0].text;
 
-                        Debug.Log(reply);
-                        //This part shows the text in the Canvas
-                        uiText.text = reply;
-                        //This part adds the response to the chat history, for your next message
-                        contentsList.Add(botContent);
-                        chatHistory = contentsList.ToArray();
-                    }
+                    // Add model reply to history
+                    TextContent botContent = new TextContent
+                    {
+                        role = "model",
+                        parts = new TextPart[] { new TextPart { text = aiResponse } }
+                    };
+                    chatHistory.Add(botContent);
+
+                    uiText.text = aiResponse;
+                    Debug.Log(aiResponse);
+                }
                 else
                 {
                     Debug.Log("No text found.");
                 }
-             }
-        }  
+            }
+            else
+            {
+                Debug.LogError("Error: " + request.error);
+                if (request.responseCode == 403) Debug.LogError("HTTP 403: Check API key and API enablement in Google Cloud Console.");
+                Debug.LogError("Response: " + request.downloadHandler.text);
+            }
+        }
     }
 
     // Image Generation is now a paid feature. The generation of images can produce charges at your credit card.

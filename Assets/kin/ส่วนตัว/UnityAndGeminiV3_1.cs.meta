@@ -1,0 +1,14 @@
+fileFormatVersion: 2
+guid: eaf80c0a3af6b8a45b62de3a3b77560f
+MonoImporter:
+  externalObjects: {}
+  serializedVersion: 2
+  defaultReferences:
+  - JsonApi: {fileID: 4900000, guid: b35be8f3ef1089047865059c7c9d4a52, type: 3}
+  - InputField: {instanceID: 0}
+  - UiText: {instanceID: 0}
+  executionOrder: 0
+  icon: {instanceID: 0}
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
