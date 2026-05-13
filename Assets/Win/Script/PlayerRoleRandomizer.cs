@@ -11,7 +11,10 @@ public class PlayerRoleRandomizer : MonoBehaviour
     {
         Villager,
         Seer,
-        Werewolf
+        Werewolf,
+        Gunner,
+        Doctor,
+        Jailer
     }
 
     [Header("UI")]
@@ -23,16 +26,32 @@ public class PlayerRoleRandomizer : MonoBehaviour
 
     [Header("After Role Reveal")]
     public float revealDelay = 3f;
-    public string nextSceneName;
+
+    [Header("Scenes")]
+    public string daySceneName;
 
     [Header("Current Role")]
     public Role currentRole;
 
-    private string[] roleNames = { "Villager", "Seer", "Werewolf" };
+    [Header("Force Role (Testing Only)")]
+    public bool forceRole = false;
+    public Role forcedRole = Role.Villager;
+
+    [HideInInspector]
+    public bool roleReady = false;
+
+    private string[] roleNames =
+    {
+        "Villager",
+        "Seer",
+        "Werewolf",
+        "Gunner",
+        "Doctor",
+        "Jailer"
+    };
 
     void Awake()
     {
-        // Keep this object between scenes
         if (Instance == null)
         {
             Instance = this;
@@ -49,67 +68,76 @@ public class PlayerRoleRandomizer : MonoBehaviour
         StartCoroutine(RandomizeRole());
     }
 
+    Color GetRoleColor(string roleName)
+    {
+        switch (roleName)
+        {
+            case "Villager":
+                return Color.green;
+            case "Seer":
+                return Color.blue;
+            case "Werewolf":
+                return Color.red;
+            case "Gunner":
+                return new Color(248f / 255f, 255f / 255f, 0f);
+            case "Doctor":
+                return new Color(0f, 255f / 255f, 208f / 255f);
+            case "Jailer":
+                return new Color(166f / 255f, 0f, 255f / 255f);
+            default:
+                return Color.white;
+        }
+    }
+
     IEnumerator RandomizeRole()
     {
-        float timer = 0f;
-
-        // Fake random swapping effect
-        while (timer < shuffleDuration)
+        if (forceRole)
         {
-            int randomIndex = Random.Range(0, roleNames.Length);
+            // Skip shuffle, show forced role immediately
+            currentRole = forcedRole;
+            string forcedName = currentRole.ToString();
+            roleText.text = forcedName;
+            roleText.color = GetRoleColor(forcedName);
+            Debug.Log("FORCED role: " + currentRole);
+        }
+        else
+        {
+            float timer = 0f;
 
-            roleText.text = roleNames[randomIndex];
-
-            switch (roleNames[randomIndex])
+            while (timer < shuffleDuration)
             {
-                case "Villager":
-                    roleText.color = Color.green;
-                    break;
+                string randomName =
+                    roleNames[Random.Range(0, roleNames.Length)];
 
-                case "Seer":
-                    roleText.color = Color.blue;
-                    break;
+                roleText.text = randomName;
+                roleText.color = GetRoleColor(randomName);
 
-                case "Werewolf":
-                    roleText.color = Color.red;
-                    break;
+                yield return new WaitForSeconds(shuffleSpeed);
+                timer += shuffleSpeed;
             }
 
-            yield return new WaitForSeconds(shuffleSpeed);
-
-            timer += shuffleSpeed;
+            currentRole = (Role)Random.Range(0, roleNames.Length);
+            string finalName = currentRole.ToString();
+            roleText.text = finalName;
+            roleText.color = GetRoleColor(finalName);
+            Debug.Log("Player role is: " + currentRole);
         }
 
-        // Final role
-        currentRole = (Role)Random.Range(0, 3);
+        roleReady = true;
 
-        roleText.text = currentRole.ToString();
+        if (GameManager.Instance != null)
+            GameManager.Instance.AssignRoles();
 
-        switch (currentRole)
-        {
-            case Role.Villager:
-                roleText.color = Color.green;
-                break;
-
-            case Role.Seer:
-                roleText.color = Color.blue;
-                break;
-
-            case Role.Werewolf:
-                roleText.color = Color.red;
-                break;
-        }
-
-        Debug.Log("Player role is: " + currentRole);
-
-        // Wait before changing scene
         yield return new WaitForSeconds(revealDelay);
 
-        SceneManager.LoadScene(nextSceneName);
+        SceneManager.LoadScene(daySceneName);
     }
 
     public bool HasNightAbility()
     {
-        return currentRole != Role.Villager;
+        return currentRole == Role.Werewolf ||
+               currentRole == Role.Seer ||
+               currentRole == Role.Doctor ||
+               currentRole == Role.Jailer;
     }
 }

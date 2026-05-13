@@ -5,182 +5,249 @@ public class GameManager : MonoBehaviour
 {
     public static GameManager Instance;
 
-    [Header("NPC Characters")]
-    public List<PlayerRole> npcs;
+    [Header("Role Counts (total including player)")]
+    public int villagerCount = 6;
+    public int seerCount = 1;
+    public int werewolfCount = 2;
+    public int gunnerCount = 1;
+    public int doctorCount = 1;
+    public int jailerCount = 1;
 
-    // PLAYER ROLE ONLY
-    [HideInInspector]
-    public PlayerRole.Role playerRole;
+    [HideInInspector] public PlayerRole.Role playerRole;
+    [HideInInspector] public List<PlayerRole.Role> savedNPCRoles = new List<PlayerRole.Role>();
+    [HideInInspector] public List<bool> npcAlive = new List<bool>();
+    [HideInInspector] public bool playerKilledByWolf = false;
 
-    // SAVED NPC ROLES
-    [HideInInspector]
-    public List<PlayerRole.Role> savedNPCRoles =
-        new List<PlayerRole.Role>();
+    [HideInInspector] public int doctorProtectedIndex = -1;
+    [HideInInspector] public bool doctorProtectedPlayer = false;
 
-    // NPC ALIVE STATES
-    [HideInInspector]
-    public List<bool> npcAlive =
-        new List<bool>() { true, true, true };
+    [HideInInspector] public int jailedNPCIndex = -1;
+    [HideInInspector] public bool playerIsJailed = false;
+    [HideInInspector] public bool jailerUsedBullet = false;
+
+    [HideInInspector] public int lastJailedNPCIndex = -1;
+    [HideInInspector] public int jailCooldownNightsLeft = 0;
+
+    [HideInInspector] public int gunnerBulletsLeft = 2;
+    [HideInInspector] public bool gunnerRevealed = false;
 
     void Awake()
     {
         if (Instance == null)
         {
             Instance = this;
-
             DontDestroyOnLoad(gameObject);
         }
         else
         {
             Destroy(gameObject);
+            return;
         }
     }
 
-    void Start()
+    public void AssignRoles()
     {
-        if (savedNPCRoles.Count == 0)
-        {
-            AssignRoles();
-        }
-    }
-
-    void AssignRoles()
-    {
-        // CHECK RANDOMIZER
         if (PlayerRoleRandomizer.Instance == null)
         {
-            Debug.LogError(
-                "PlayerRoleRandomizer is NULL!");
-
+            Debug.LogError("PlayerRoleRandomizer missing!");
             return;
         }
 
-        // SAVE PLAYER ROLE
+        if (!PlayerRoleRandomizer.Instance.roleReady)
+        {
+            Debug.LogError("AssignRoles called before role was ready!");
+            return;
+        }
+
         playerRole =
-            (PlayerRole.Role)
-            PlayerRoleRandomizer.Instance.currentRole;
+            (PlayerRole.Role)PlayerRoleRandomizer.Instance.currentRole;
 
-        // REMAINING ROLES
-        List<PlayerRole.Role> remainingRoles =
-            new List<PlayerRole.Role>()
+        List<PlayerRole.Role> allRoles = new List<PlayerRole.Role>();
+
+        for (int i = 0; i < villagerCount; i++)
+            allRoles.Add(PlayerRole.Role.Villager);
+        for (int i = 0; i < seerCount; i++)
+            allRoles.Add(PlayerRole.Role.Seer);
+        for (int i = 0; i < werewolfCount; i++)
+            allRoles.Add(PlayerRole.Role.Werewolf);
+        for (int i = 0; i < gunnerCount; i++)
+            allRoles.Add(PlayerRole.Role.Gunner);
+        for (int i = 0; i < doctorCount; i++)
+            allRoles.Add(PlayerRole.Role.Doctor);
+        for (int i = 0; i < jailerCount; i++)
+            allRoles.Add(PlayerRole.Role.Jailer);
+
+        allRoles.Remove(playerRole);
+
+        for (int i = 0; i < allRoles.Count; i++)
         {
-            PlayerRole.Role.Werewolf,
-            PlayerRole.Role.Seer,
-            PlayerRole.Role.Villager,
-            PlayerRole.Role.Villager
-        };
-
-        // REMOVE PLAYER ROLE
-        remainingRoles.Remove(playerRole);
-
-        // SHUFFLE
-        for (int i = 0; i < remainingRoles.Count; i++)
-        {
-            PlayerRole.Role temp =
-                remainingRoles[i];
-
-            int randomIndex =
-                Random.Range(
-                    i,
-                    remainingRoles.Count);
-
-            remainingRoles[i] =
-                remainingRoles[randomIndex];
-
-            remainingRoles[randomIndex] =
-                temp;
+            int randomIndex = Random.Range(i, allRoles.Count);
+            PlayerRole.Role temp = allRoles[i];
+            allRoles[i] = allRoles[randomIndex];
+            allRoles[randomIndex] = temp;
         }
 
         savedNPCRoles.Clear();
+        npcAlive.Clear();
+        playerKilledByWolf = false;
+        doctorProtectedIndex = -1;
+        doctorProtectedPlayer = false;
+        jailedNPCIndex = -1;
+        playerIsJailed = false;
+        jailerUsedBullet = false;
+        lastJailedNPCIndex = -1;
+        jailCooldownNightsLeft = 0;
+        gunnerBulletsLeft = 2;
+        gunnerRevealed = false;
 
-        // ASSIGN NPC ROLES
-        for (int i = 0; i < npcs.Count; i++)
+        for (int i = 0; i < allRoles.Count; i++)
         {
-            // NULL CHECK
-            if (npcs[i] == null)
-            {
-                Debug.LogError(
-                    "NPC at index "
-                    + i +
-                    " is NULL!");
-
-                continue;
-            }
-
-            npcs[i].currentRole =
-                remainingRoles[i];
-
-            savedNPCRoles.Add(
-                remainingRoles[i]);
-
-            Debug.Log(
-                npcs[i].name +
-                " is " +
-                remainingRoles[i]);
+            savedNPCRoles.Add(allRoles[i]);
+            npcAlive.Add(true);
+            Debug.Log("NPC " + i + " | Role: " + allRoles[i]);
         }
+
+        Debug.Log("Player role: " + playerRole);
+        Debug.Log("Total NPCs: " + savedNPCRoles.Count);
     }
 
-    // NPC WEREWOLF AUTO KILL
+    public void ResetNightState()
+    {
+        doctorProtectedIndex = -1;
+        doctorProtectedPlayer = false;
+        playerKilledByWolf = false;
+
+        if (jailCooldownNightsLeft > 0)
+        {
+            jailCooldownNightsLeft--;
+            Debug.Log("Jail cooldown remaining: " + jailCooldownNightsLeft);
+        }
+
+        Debug.Log("Night started | jailedNPCIndex: " + jailedNPCIndex);
+    }
+
+    public void ResetDayState()
+    {
+        jailedNPCIndex = -1;
+        playerIsJailed = false;
+        Debug.Log("Day started, jail slot cleared");
+    }
+
+    public bool CanBeJailed(int npcIndex)
+    {
+        if (lastJailedNPCIndex == npcIndex &&
+            jailCooldownNightsLeft > 0)
+        {
+            return false;
+        }
+
+        return true;
+    }
+
+    public void SetJailTarget(int npcIndex)
+    {
+        jailedNPCIndex = npcIndex;
+        lastJailedNPCIndex = npcIndex;
+        jailCooldownNightsLeft = 2;
+        Debug.Log("Jailed NPC " + npcIndex +
+                  " | Cooldown: " + jailCooldownNightsLeft);
+    }
+
     public void NPCWerewolfKill()
     {
-        // IF PLAYER IS WEREWOLF,
-        // DON'T AUTO KILL
-        if (playerRole ==
-            PlayerRole.Role.Werewolf)
+        if (playerRole == PlayerRole.Role.Werewolf)
         {
+            Debug.Log("Player is werewolf, NPC wolves follow player");
             return;
         }
 
-        int wolfIndex = -1;
-
-        // FIND NPC WEREWOLF
-        for (int i = 0; i < savedNPCRoles.Count; i++)
+        bool anyWolfAlive = false;
+        for (int i = 0; i < npcAlive.Count; i++)
         {
-            if (savedNPCRoles[i] ==
-                PlayerRole.Role.Werewolf)
+            if (npcAlive[i] &&
+                savedNPCRoles[i] == PlayerRole.Role.Werewolf)
             {
-                wolfIndex = i;
-
+                anyWolfAlive = true;
                 break;
             }
         }
 
-        // NO WEREWOLF FOUND
-        if (wolfIndex == -1)
+        if (!anyWolfAlive)
         {
-            Debug.LogError(
-                "No NPC Werewolf found!");
-
+            Debug.Log("No NPC werewolves alive");
             return;
         }
 
-        // POSSIBLE VICTIMS
-        List<int> victims =
-            new List<int>();
+        List<int> npcVictims = new List<int>();
+        for (int i = 0; i < npcAlive.Count; i++)
+        {
+            if (!npcAlive[i]) continue;
+            if (savedNPCRoles[i] == PlayerRole.Role.Werewolf) continue;
+            if (i == jailedNPCIndex) continue;
+            npcVictims.Add(i);
+        }
+
+        bool playerCanBeVictim = !playerIsJailed;
+        int totalPool = npcVictims.Count + (playerCanBeVictim ? 1 : 0);
+
+        if (totalPool == 0)
+        {
+            Debug.Log("No victims available");
+            return;
+        }
+
+        int roll = Random.Range(0, totalPool);
+
+        if (playerCanBeVictim && roll == totalPool - 1)
+        {
+            if (doctorProtectedPlayer)
+                Debug.Log("Player attacked but Doctor saved them!");
+            else
+            {
+                playerKilledByWolf = true;
+                Debug.Log("NPC Werewolf killed the PLAYER");
+            }
+        }
+        else
+        {
+            int victimIndex = npcVictims[roll];
+
+            if (victimIndex == doctorProtectedIndex)
+                Debug.Log("NPC " + victimIndex +
+                          " attacked but Doctor saved them!");
+            else
+            {
+                npcAlive[victimIndex] = false;
+                Debug.Log("NPC Werewolf killed NPC " + victimIndex +
+                          " | Role: " + savedNPCRoles[victimIndex]);
+            }
+        }
+    }
+
+    public int CheckWinCondition()
+    {
+        int aliveWolves = 0;
+        int aliveVillagers = 0;
 
         for (int i = 0; i < npcAlive.Count; i++)
         {
-            if (i != wolfIndex &&
-                npcAlive[i])
-            {
-                victims.Add(i);
-            }
+            if (!npcAlive[i]) continue;
+            if (savedNPCRoles[i] == PlayerRole.Role.Werewolf)
+                aliveWolves++;
+            else
+                aliveVillagers++;
         }
 
-        // KILL RANDOM NPC
-        if (victims.Count > 0)
-        {
-            int victim =
-                victims[
-                    Random.Range(
-                        0,
-                        victims.Count)];
+        if (playerRole == PlayerRole.Role.Werewolf)
+            aliveWolves++;
+        else
+            aliveVillagers++;
 
-            npcAlive[victim] = false;
+        Debug.Log("Alive wolves: " + aliveWolves +
+                  " | Alive villagers: " + aliveVillagers);
 
-            Debug.Log(
-                "NPC Werewolf killed NPC "
-                + victim);
-        }
+        if (aliveWolves == 0) return 1;
+        if (aliveWolves >= aliveVillagers) return 2;
+        return 0;
     }
 }

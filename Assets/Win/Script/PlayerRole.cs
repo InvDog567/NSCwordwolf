@@ -6,60 +6,57 @@ public class PlayerRole : MonoBehaviour
     {
         Villager,
         Seer,
-        Werewolf
+        Werewolf,
+        Gunner,
+        Doctor,
+        Jailer
     }
 
     [Header("Role")]
-    public Role currentRole =
-        Role.Villager;
+    public Role currentRole = Role.Villager;
 
-    [Header("Settings")]
+    [Header("Player")]
     public bool isPlayer;
 
-    [Header("NPC")]
-    public int npcIndex;
+    [Header("NPC Index (set manually in Inspector)")]
+    public int npcIndex = -1;
 
     [HideInInspector]
     public bool isDead = false;
 
     void Start()
     {
-        // PLAYER
         if (isPlayer)
         {
             if (PlayerRoleRandomizer.Instance != null)
             {
                 currentRole =
-                    (Role)
-                    PlayerRoleRandomizer
-                    .Instance.currentRole;
+                    (Role)PlayerRoleRandomizer.Instance.currentRole;
             }
         }
-
-        // NPC
         else
         {
-            if (GameManager.Instance != null)
+            if (GameManager.Instance != null &&
+                npcIndex >= 0 &&
+                npcIndex < GameManager.Instance.savedNPCRoles.Count)
             {
-                if (npcIndex >= 0 &&
-                    npcIndex <
-                    GameManager.Instance
-                    .savedNPCRoles.Count)
-                {
-                    currentRole =
-                        GameManager.Instance
-                        .savedNPCRoles[npcIndex];
-                }
+                currentRole =
+                    GameManager.Instance.savedNPCRoles[npcIndex];
+
+                isDead =
+                    !GameManager.Instance.npcAlive[npcIndex];
+
+                if (isDead)
+                    gameObject.SetActive(false);
             }
         }
     }
 
     public bool HasNightAbility()
     {
-        return currentRole ==
-               Role.Seer ||
-
-               currentRole ==
-               Role.Werewolf;
+        return currentRole == Role.Seer ||
+               currentRole == Role.Werewolf ||
+               currentRole == Role.Doctor ||
+               currentRole == Role.Jailer;
     }
 }

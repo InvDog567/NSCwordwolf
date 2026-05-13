@@ -1,70 +1,81 @@
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
+using System.Collections.Generic;
 
 public class VoteManager : MonoBehaviour
 {
-    [Header("Buttons")]
-    public Button npc1Button;
-    public Button npc2Button;
-    public Button npc3Button;
+    [Header("NPC Vote Buttons (index 0-11)")]
+    public List<Button> npcButtons =
+        new List<Button>();
 
     [Header("Scenes")]
     public string villagersWinScene;
     public string werewolfWinScene;
+    public string daySceneName;
     public string loseScene;
 
     void Start()
     {
         if (GameManager.Instance == null) return;
 
-        // Hide dead NPC buttons
-        if (!GameManager.Instance.npcAlive[0])
-            npc1Button.gameObject.SetActive(false);
+        // If player was killed by wolf at night
+        if (GameManager.Instance.playerKilledByWolf)
+        {
+            SceneManager.LoadScene(loseScene);
+            return;
+        }
 
-        if (!GameManager.Instance.npcAlive[1])
-            npc2Button.gameObject.SetActive(false);
+        // Hide buttons for dead NPCs
+        for (int i = 0; i < npcButtons.Count; i++)
+        {
+            if (npcButtons[i] == null) continue;
 
-        if (!GameManager.Instance.npcAlive[2])
-            npc3Button.gameObject.SetActive(false);
+            if (i >= GameManager.Instance.npcAlive.Count ||
+                !GameManager.Instance.npcAlive[i])
+            {
+                npcButtons[i].gameObject.SetActive(false);
+            }
+        }
+
+        // Check win condition before voting starts
+        int result = GameManager.Instance.CheckWinCondition();
+        if (result == 1)
+        {
+            SceneManager.LoadScene(villagersWinScene);
+            return;
+        }
+        if (result == 2)
+        {
+            SceneManager.LoadScene(werewolfWinScene);
+            return;
+        }
     }
 
     public void VoteNPC(int npcIndex)
     {
         if (GameManager.Instance == null) return;
 
-        // Mark voted NPC as dead
         GameManager.Instance.npcAlive[npcIndex] = false;
 
-        // Get voted role
-        PlayerRole.Role votedRole =
-            GameManager.Instance.savedNPCRoles[npcIndex];
+        Debug.Log("Voted out NPC " + npcIndex +
+                  " who was " +
+                  GameManager.Instance.savedNPCRoles[npcIndex]);
 
-        // Get player role safely
-        PlayerRole.Role playerRole =
-            (PlayerRole.Role)PlayerRoleRandomizer.Instance.currentRole;
+        int result = GameManager.Instance.CheckWinCondition();
 
-        // =========================
-        // IF PLAYER IS WEREWOLF
-        // =========================
-        if (playerRole == PlayerRole.Role.Werewolf)
+        if (result == 1)
+        {
+            SceneManager.LoadScene(villagersWinScene);
+        }
+        else if (result == 2)
         {
             SceneManager.LoadScene(werewolfWinScene);
-            return;
-        }
-
-        // =========================
-        // IF PLAYER IS VILLAGER / SEER
-        // =========================
-        if (votedRole == PlayerRole.Role.Werewolf)
-        {
-            // Correct vote → WIN
-            SceneManager.LoadScene(villagersWinScene);
         }
         else
         {
-            // Wrong vote → LOSE
-            SceneManager.LoadScene(loseScene);
+            // Game continues — back to day
+            SceneManager.LoadScene(daySceneName);
         }
     }
 }
