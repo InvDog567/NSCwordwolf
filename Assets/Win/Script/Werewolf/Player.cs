@@ -1,0 +1,135 @@
+using UnityEngine;
+ 
+[System.Serializable]
+public class FootstepSurface
+{
+    public string tagName;
+    public AudioClip walkSound;
+}
+ 
+public class Player : MonoBehaviour
+{
+    [Header("Movement")]
+    public float speed = 5f;
+    public float jumpHeight = 1.5f;
+    public float gravity = -9.81f;
+ 
+    [Header("Mouse Look")]
+    public float mouseSensitivityX = 2f;
+    public float mouseSensitivityY = 2f;
+    public Transform cameraPivot;
+ 
+    [Header("Footsteps")]
+    public AudioSource footstepSource;
+    public FootstepSurface[] surfaces;
+    public AudioClip defaultWalkSound;
+ 
+    private CharacterController controller;
+    private float yVelocity;
+    private float xRotation;
+ 
+    void Start()
+    {
+        controller = GetComponent<CharacterController>();
+        Cursor.lockState = CursorLockMode.Locked;
+        Cursor.visible = false;
+        footstepSource.playOnAwake = false;
+        footstepSource.loop = true;
+ 
+        // Apply saved sensitivity when scene loads
+        ApplySensitivity();
+    }
+ 
+    void Update()
+    {
+        if (Time.timeScale == 0f)
+            return;
+ 
+        HandleMouseLook();
+        HandleMovement();
+        HandleFootsteps();
+    }
+ 
+    // Reads from GameSettings so it picks up any changes mid-game too
+    private void ApplySensitivity()
+    {
+        mouseSensitivityX = GameSettings.SensitivityX;
+        mouseSensitivityY = GameSettings.SensitivityY;
+    }
+ 
+    void HandleMouseLook()
+    {
+        // Always read live from GameSettings so slider changes take effect immediately
+        float mouseX = Input.GetAxisRaw("Mouse X") * GameSettings.SensitivityX;
+        float mouseY = Input.GetAxisRaw("Mouse Y") * GameSettings.SensitivityY;
+ 
+        xRotation -= mouseY;
+        xRotation = Mathf.Clamp(xRotation, -80f, 80f);
+        cameraPivot.localRotation = Quaternion.Euler(xRotation, 0f, 0f);
+        transform.Rotate(Vector3.up * mouseX);
+    }
+ 
+    void HandleMovement()
+    {
+        float x = Input.GetAxis("Horizontal");
+        float z = Input.GetAxis("Vertical");
+        Vector3 move = transform.right * x + transform.forward * z;
+ 
+        if (controller.isGrounded && yVelocity < 0)
+            yVelocity = -2f;
+ 
+        if (Input.GetButtonDown("Jump") && controller.isGrounded)
+            yVelocity = Mathf.Sqrt(jumpHeight * -2f * gravity);
+ 
+        yVelocity += gravity * Time.deltaTime;
+        Vector3 velocity = move * speed;
+        velocity.y = yVelocity;
+        controller.Move(velocity * Time.deltaTime);
+    }
+ 
+    void HandleFootsteps()
+    {
+        bool isMoving =
+            controller.isGrounded &&
+            (
+                Mathf.Abs(Input.GetAxisRaw("Horizontal")) > 0.01f ||
+                Mathf.Abs(Input.GetAxisRaw("Vertical")) > 0.01f
+            );
+ 
+        if (!isMoving)
+        {
+            if (footstepSource.isPlaying)
+                footstepSource.Stop();
+            return;
+        }
+ 
+        AudioClip targetClip = GetCurrentSurfaceSound();
+        if (targetClip == null) return;
+ 
+        if (footstepSource.clip != targetClip)
+        {
+            footstepSource.Stop();
+            footstepSource.clip = targetClip;
+            footstepSource.Play();
+        }
+        else if (!footstepSource.isPlaying)
+        {
+            footstepSource.Play();
+        }
+    }
+ 
+    AudioClip GetCurrentSurfaceSound()
+    {
+        RaycastHit hit;
+        if (Physics.Raycast(transform.position + Vector3.up * 0.2f, Vector3.down, out hit, 2f))
+        {
+            foreach (FootstepSurface surface in surfaces)
+            {
+                if (hit.collider.CompareTag(surface.tagName))
+                    return surface.walkSound;
+            }
+        }
+        return defaultWalkSound;
+    }
+}
+ 

@@ -1,212 +1,265 @@
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
+using UnityEngine.Audio;
 using TMPro;
-
+using System.Collections;
+ 
 public class StartManager : MonoBehaviour
 {
     // ========== MAIN MENU BUTTONS ==========
     [SerializeField] private Button playButton;
     [SerializeField] private Button settingsButton;
     [SerializeField] private Button exitButton;
-
-    // ========== GAME SCENE BUTTONS ==========
-    [SerializeField] private Button backToMenuButton;
-
+ 
     // ========== SETTINGS PANEL ==========
     [SerializeField] private GameObject settingsPanel;
-    [SerializeField] private Button backButton;
-
-    // ========== SETTINGS CONTROLS ==========
-    [SerializeField] private Slider volumeSlider;
-    [SerializeField] private TextMeshProUGUI volumeLabel;
+ 
+    // ========== AUDIO MIXER ==========
+    [SerializeField] private AudioMixer audioMixer;
+ 
+    // ========== VIDEO SETTINGS ==========
     [SerializeField] private TMP_Dropdown resolutionDropdown;
     [SerializeField] private Toggle fullscreenToggle;
-
+ 
+    // ========== AUDIO SETTINGS ==========
+    [SerializeField] private Slider masterVolumeSlider;
+    [SerializeField] private TextMeshProUGUI masterVolumeLabel;
+ 
+    [SerializeField] private Slider musicVolumeSlider;
+    [SerializeField] private TextMeshProUGUI musicVolumeLabel;
+ 
+    [SerializeField] private Slider sfxVolumeSlider;
+    [SerializeField] private TextMeshProUGUI sfxVolumeLabel;
+ 
+    [SerializeField] private Slider dialogVolumeSlider;
+    [SerializeField] private TextMeshProUGUI dialogVolumeLabel;
+ 
+    // ========== CONTROLS SETTINGS ==========
+    [SerializeField] private Slider sensitivitySlider;
+    [SerializeField] private TextMeshProUGUI sensitivityLabel;
+ 
     // ========== SCENE NAME ==========
-    [SerializeField] private string gameSceneName = "GameScene"; // เปลี่ยนชื่อได้ที่นี่
-
-    // ========== PRIVATE VARIABLES ==========
-    private AudioListener audioListener;
+    [SerializeField] private string gameSceneName = "GameScene";
+ 
+    // ========== DELAY ==========
+    [SerializeField] private float sceneLoadDelay = 1f;
+ 
+    // ========== PRIVATE ==========
     private Resolution[] resolutions;
-
+ 
+    private void Awake()
+    {
+        GameSettings.LoadFromPrefs();
+        ApplyAudioMixer();
+    }
+ 
     private void Start()
     {
-        // หาตัว AudioListener
-        audioListener = FindObjectOfType<AudioListener>();
-        if (audioListener == null)
-        {
-            Debug.LogWarning("ไม่พบ AudioListener ในเซน");
-        }
-
-        // เช็คว่าปุ่มเหล่านี้มีหรือไม่
-        if (playButton != null)
-            playButton.onClick.AddListener(PlayGame);
-
-        if (settingsButton != null)
-            settingsButton.onClick.AddListener(ShowSettings);
-
-        if (exitButton != null)
-            exitButton.onClick.AddListener(ExitGame);
-
-        if (backButton != null)
-            backButton.onClick.AddListener(HideSettings);
-
-        if (backToMenuButton != null)
-            backToMenuButton.onClick.AddListener(BackToMenu);
-
-        // ตั้งค่า Slider
-        if (volumeSlider != null)
-            volumeSlider.onValueChanged.AddListener(ChangeVolume);
-
-        // ตั้งค่า Dropdown
-        if (resolutionDropdown != null)
-            resolutionDropdown.onValueChanged.AddListener(ChangeResolution);
-
-        // ตั้งค่า Toggle
-        if (fullscreenToggle != null)
-            fullscreenToggle.onValueChanged.AddListener(ChangeFullscreen);
-
-        // โหลดค่า Settings ที่บันทึกไว้
-        LoadSettings();
-
-        // ตั้งค่า Resolution Dropdown
+        if (playButton != null)   playButton.onClick.AddListener(PlayGame);
+        if (settingsButton != null) settingsButton.onClick.AddListener(ShowSettings);
+        if (exitButton != null)   exitButton.onClick.AddListener(ExitGame);
+ 
+        if (masterVolumeSlider != null)  masterVolumeSlider.onValueChanged.AddListener(ChangeMasterVolume);
+        if (musicVolumeSlider != null)   musicVolumeSlider.onValueChanged.AddListener(ChangeMusicVolume);
+        if (sfxVolumeSlider != null)     sfxVolumeSlider.onValueChanged.AddListener(ChangeSFXVolume);
+        if (dialogVolumeSlider != null)  dialogVolumeSlider.onValueChanged.AddListener(UpdateDialogLabel);
+        if (sensitivitySlider != null)   sensitivitySlider.onValueChanged.AddListener(ChangeSensitivity);
+ 
+        if (resolutionDropdown != null)  resolutionDropdown.onValueChanged.AddListener(ChangeResolution);
+        if (fullscreenToggle != null)    fullscreenToggle.onValueChanged.AddListener(ChangeFullscreen);
+ 
+        LoadSettingsIntoUI();
+ 
         if (resolutionDropdown != null)
             SetupResolutions();
     }
-
-    // ========== MAIN MENU FUNCTIONS ==========
-
+ 
+    // ========== MAIN MENU ==========
+ 
     private void PlayGame()
     {
-        Debug.Log($"เข้าเกม: {gameSceneName}");
+        playButton.interactable = false;
+        StartCoroutine(LoadAfterDelay());
+    }
+ 
+    private IEnumerator LoadAfterDelay()
+    {
+        yield return new WaitForSeconds(sceneLoadDelay);
         SceneManager.LoadScene(gameSceneName);
     }
-
+ 
     private void ShowSettings()
     {
         if (settingsPanel != null)
             settingsPanel.SetActive(true);
     }
-
-    private void HideSettings()
-    {
-        if (settingsPanel != null)
-            settingsPanel.SetActive(false);
-    }
-
+ 
     private void ExitGame()
     {
-        Debug.Log("ออกจากเกม!");
         #if UNITY_EDITOR
             UnityEditor.EditorApplication.isPlaying = false;
         #else
             Application.Quit();
         #endif
     }
-
-    // ========== GAME SCENE FUNCTIONS ==========
-
-    private void BackToMenu()
+ 
+    // ========== AUDIO ==========
+ 
+    // Converts 0-1 slider value to decibels and applies to mixer
+    // AudioMixer uses dB: 0dB = full, -80dB = silent
+    private float ToDecibels(float value)
     {
-        Debug.Log("กลับไปเมนู!");
-        SceneManager.LoadScene("MainMenu");
+        return value > 0.001f ? Mathf.Log10(value) * 20f : -80f;
     }
-
-    // ========== SETTINGS FUNCTIONS ==========
-
-    private void ChangeVolume(float volume)
+ 
+    private void ApplyAudioMixer()
     {
-        // ปรับระดับเสียง (0-100)
-        float volumePercent = volume * 100f;
-        AudioListener.volume = volume;
-
-        // อัปเดต UI
-        if (volumeLabel != null)
-            volumeLabel.text = $"Volume: {volumePercent:F0}%";
-
-        // บันทึก Setting
-        PlayerPrefs.SetFloat("Volume", volume);
+        if (audioMixer == null) return;
+        audioMixer.SetFloat("MusicVolume", ToDecibels(GameSettings.MusicVolume));
+        audioMixer.SetFloat("SFXVolume",   ToDecibels(GameSettings.SFXVolume));
+    }
+ 
+    private void ChangeMasterVolume(float value)
+    {
+        GameSettings.MasterVolume = value;
+        AudioListener.volume = value;
+        if (masterVolumeLabel != null)
+            masterVolumeLabel.text = $"Master Volume: {value * 100f:F0}%";
+        PlayerPrefs.SetFloat("MasterVolume", value);
         PlayerPrefs.Save();
-
-        Debug.Log($"เปลี่ยนเสียง: {volumePercent:F0}%");
     }
-
+ 
+    private void ChangeMusicVolume(float value)
+    {
+        GameSettings.MusicVolume = value;
+        if (audioMixer != null)
+            audioMixer.SetFloat("MusicVolume", ToDecibels(value));
+        if (musicVolumeLabel != null)
+            musicVolumeLabel.text = $"Music Volume: {value * 100f:F0}%";
+        PlayerPrefs.SetFloat("MusicVolume", value);
+        PlayerPrefs.Save();
+    }
+ 
+    private void ChangeSFXVolume(float value)
+    {
+        GameSettings.SFXVolume = value;
+        if (audioMixer != null)
+            audioMixer.SetFloat("SFXVolume", ToDecibels(value));
+        if (sfxVolumeLabel != null)
+            sfxVolumeLabel.text = $"SFX Volume: {value * 100f:F0}%";
+        PlayerPrefs.SetFloat("SFXVolume", value);
+        PlayerPrefs.Save();
+    }
+ 
+    // Dialog: UI only for now
+    private void UpdateDialogLabel(float value)
+    {
+        if (dialogVolumeLabel != null)
+            dialogVolumeLabel.text = $"Dialog Volume: {value * 100f:F0}%";
+    }
+ 
+    // ========== VIDEO ==========
+ 
     private void SetupResolutions()
     {
-        // หาความละเอียดจอที่รองรับทั้งหมด
         resolutions = Screen.resolutions;
-
-        if (resolutionDropdown != null)
+        resolutionDropdown.ClearOptions();
+        int currentResolutionIndex = 0;
+ 
+        for (int i = 0; i < resolutions.Length; i++)
         {
-            resolutionDropdown.ClearOptions();
-
-            int currentResolutionIndex = 0;
-
-            for (int i = 0; i < resolutions.Length; i++)
-            {
-                string resolutionOption = resolutions[i].width + " x " + resolutions[i].height;
-                resolutionDropdown.options.Add(new TMP_Dropdown.OptionData(resolutionOption));
-
-                // เช็คความละเอียดปัจจุบัน
-                if (resolutions[i].width == Screen.width && resolutions[i].height == Screen.height)
-                {
-                    currentResolutionIndex = i;
-                }
-            }
-
-            resolutionDropdown.value = currentResolutionIndex;
-            resolutionDropdown.RefreshShownValue();
+            string option = resolutions[i].width + " x " + resolutions[i].height;
+            resolutionDropdown.options.Add(new TMP_Dropdown.OptionData(option));
+ 
+            if (resolutions[i].width == Screen.width && resolutions[i].height == Screen.height)
+                currentResolutionIndex = i;
         }
+ 
+        resolutionDropdown.value = currentResolutionIndex;
+        resolutionDropdown.RefreshShownValue();
     }
-
-    private void ChangeResolution(int resolutionIndex)
+ 
+    private void ChangeResolution(int index)
     {
-        if (resolutions != null && resolutionIndex < resolutions.Length)
+        if (resolutions != null && index < resolutions.Length)
         {
-            Resolution resolution = resolutions[resolutionIndex];
-            Screen.SetResolution(resolution.width, resolution.height, Screen.fullScreen);
-
-            // บันทึก Setting
-            PlayerPrefs.SetInt("ResolutionIndex", resolutionIndex);
+            Resolution res = resolutions[index];
+            Screen.SetResolution(res.width, res.height, Screen.fullScreen);
+            PlayerPrefs.SetInt("ResolutionIndex", index);
             PlayerPrefs.Save();
-
-            Debug.Log($"เปลี่ยนความละเอียด: {resolution.width} x {resolution.height}");
         }
     }
-
+ 
     private void ChangeFullscreen(bool isFullscreen)
     {
         Screen.fullScreen = isFullscreen;
-
-        // บันทึก Setting
         PlayerPrefs.SetInt("Fullscreen", isFullscreen ? 1 : 0);
         PlayerPrefs.Save();
-
-        Debug.Log($"เต็มจอ: {isFullscreen}");
     }
-
-    // ========== LOAD/SAVE SETTINGS ==========
-
-    private void LoadSettings()
+ 
+    // ========== CONTROLS ==========
+ 
+    // Slider in Inspector: Min=0, Max=1
+    // Remaps to real sensitivity: 0=0.1 (very slow), 0.5=2.0 (normal), 1.0=5.0 (fast)
+    
+    
+ 
+    private void ChangeSensitivity(float sliderValue)
     {
-        // โหลด Volume
-        float savedVolume = PlayerPrefs.GetFloat("Volume", 0.5f);
-        if (volumeSlider != null)
-            volumeSlider.value = savedVolume;
-        AudioListener.volume = savedVolume;
-
-        // โหลด Resolution
-        int resolutionIndex = PlayerPrefs.GetInt("ResolutionIndex", 0);
-        if (resolutionDropdown != null)
-            resolutionDropdown.value = resolutionIndex;
-
-        // โหลด Fullscreen
+        
+        GameSettings.SensitivityX = sliderValue;
+        GameSettings.SensitivityY = sliderValue;
+        if (sensitivityLabel != null)
+            sensitivityLabel.text = $"Camera Sensitivity: {sliderValue:F1}";
+        PlayerPrefs.SetFloat("SensitivityX", sliderValue);
+        PlayerPrefs.SetFloat("SensitivityY", sliderValue);
+        PlayerPrefs.Save();
+    }
+ 
+    // ========== LOAD INTO UI ==========
+ 
+    private void LoadSettingsIntoUI()
+    {
+        // Remove listeners first to avoid double-firing
+        if (masterVolumeSlider != null)  masterVolumeSlider.onValueChanged.RemoveListener(ChangeMasterVolume);
+        if (musicVolumeSlider != null)   musicVolumeSlider.onValueChanged.RemoveListener(ChangeMusicVolume);
+        if (sfxVolumeSlider != null)     sfxVolumeSlider.onValueChanged.RemoveListener(ChangeSFXVolume);
+        if (dialogVolumeSlider != null)  dialogVolumeSlider.onValueChanged.RemoveListener(UpdateDialogLabel);
+        if (sensitivitySlider != null)   sensitivitySlider.onValueChanged.RemoveListener(ChangeSensitivity);
+ 
+        if (masterVolumeSlider != null)  masterVolumeSlider.value = GameSettings.MasterVolume;
+        if (masterVolumeLabel != null)   masterVolumeLabel.text = $"Master Volume: {GameSettings.MasterVolume * 100f:F0}%";
+        AudioListener.volume = GameSettings.MasterVolume;
+ 
+        if (musicVolumeSlider != null)   musicVolumeSlider.value = GameSettings.MusicVolume;
+        if (musicVolumeLabel != null)    musicVolumeLabel.text = $"Music Volume: {GameSettings.MusicVolume * 100f:F0}%";
+ 
+        if (sfxVolumeSlider != null)     sfxVolumeSlider.value = GameSettings.SFXVolume;
+        if (sfxVolumeLabel != null)      sfxVolumeLabel.text = $"SFX Volume: {GameSettings.SFXVolume * 100f:F0}%";
+ 
+        if (dialogVolumeSlider != null)  dialogVolumeSlider.value = GameSettings.DialogVolume;
+        if (dialogVolumeLabel != null)   dialogVolumeLabel.text = $"Dialog Volume: {GameSettings.DialogVolume * 100f:F0}%";
+ 
+        if (sensitivitySlider != null)   sensitivitySlider.value = GameSettings.SensitivityX;
+        if (sensitivityLabel != null)    sensitivityLabel.text = $"Camera Sensitivity: {GameSettings.SensitivityX:F1}";
+ 
+ 
+ 
+        int resIndex = PlayerPrefs.GetInt("ResolutionIndex", 0);
+        if (resolutionDropdown != null)  resolutionDropdown.value = resIndex;
+ 
         int fullscreen = PlayerPrefs.GetInt("Fullscreen", 1);
-        if (fullscreenToggle != null)
-            fullscreenToggle.isOn = fullscreen == 1;
+        if (fullscreenToggle != null)    fullscreenToggle.isOn = fullscreen == 1;
         Screen.fullScreen = fullscreen == 1;
-
+ 
+        // Re-add listeners
+        if (masterVolumeSlider != null)  masterVolumeSlider.onValueChanged.AddListener(ChangeMasterVolume);
+        if (musicVolumeSlider != null)   musicVolumeSlider.onValueChanged.AddListener(ChangeMusicVolume);
+        if (sfxVolumeSlider != null)     sfxVolumeSlider.onValueChanged.AddListener(ChangeSFXVolume);
+        if (dialogVolumeSlider != null)  dialogVolumeSlider.onValueChanged.AddListener(UpdateDialogLabel);
+        if (sensitivitySlider != null)   sensitivitySlider.onValueChanged.AddListener(ChangeSensitivity);
+ 
         Debug.Log("โหลด Settings สำเร็จ");
     }
 }
