@@ -1,13 +1,33 @@
 {
   "dependencies": {
     "com.ivanmurzak.unity.mcp": {
-      "version": "0.82.2",
+      "version": "0.82.4",
       "depth": 0,
       "source": "registry",
       "dependencies": {
         "com.unity.test-framework": "1.1.33",
         "com.unity.modules.uielements": "1.0.0",
         "extensions.unity.playerprefsex": "2.1.5"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "com.ivanmurzak.unity.mcp.cinemachine": {
+      "version": "1.0.10",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.ivanmurzak.unity.mcp": "0.82.4",
+        "com.unity.cinemachine": "3.1.6"
+      },
+      "url": "https://package.openupm.com"
+    },
+    "com.ivanmurzak.unity.mcp.probuilder": {
+      "version": "1.2.24",
+      "depth": 0,
+      "source": "registry",
+      "dependencies": {
+        "com.ivanmurzak.unity.mcp": "0.82.4",
+        "com.unity.probuilder": "5.2.4"
       },
       "url": "https://package.openupm.com"
     },

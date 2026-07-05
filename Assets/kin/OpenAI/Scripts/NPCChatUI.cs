@@ -7,9 +7,9 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 
-[RequireComponent(typeof(NPCChatController))]
 public class NPCChatUI : MonoBehaviour
 {
+    [Header("UI References")]
     [SerializeField] private TMP_InputField playerInputField;
     [SerializeField] private TMP_Text npcReplyText;
     [SerializeField] private TMP_Text statusText;
@@ -25,8 +25,6 @@ public class NPCChatUI : MonoBehaviour
     private bool _showingThai;
     private bool _isTranslating;
 
-    private void Awake() => _chatController = GetComponent<NPCChatController>();
-
     private void Start()
     {
         AutoAssignMissingReferences();
@@ -38,7 +36,7 @@ public class NPCChatUI : MonoBehaviour
 
     private void Update()
     {
-        if (playerInputField == null)
+        if (playerInputField == null || _chatController == null)
             return;
 
         if (Input.GetKeyDown(KeyCode.Escape) && _chatController.isChatActive)
@@ -59,24 +57,31 @@ public class NPCChatUI : MonoBehaviour
         }
     }
 
-    private void OnEnable()
-    {
-        _chatController.OnRequestStarted.AddListener(HandleRequestStarted);
-        _chatController.OnResponseReceived.AddListener(HandleResponseReceived);
-        _chatController.OnError.AddListener(HandleError);
-    }
-
-    private void OnDisable()
-    {
-        _chatController.OnRequestStarted.RemoveListener(HandleRequestStarted);
-        _chatController.OnResponseReceived.RemoveListener(HandleResponseReceived);
-        _chatController.OnError.RemoveListener(HandleError);
-    }
-
     private void OnDestroy()
     {
+        UnsubscribeFromCurrentNpc();
+
         if (playerInputField != null)
             playerInputField.onSubmit.RemoveListener(HandleInputSubmitted);
+    }
+
+    public void SetActiveChatController(NPCChatController chatController)
+    {
+        if (_chatController == chatController)
+            return;
+
+        UnsubscribeFromCurrentNpc();
+        _chatController = chatController;
+        SubscribeToCurrentNpc();
+
+        _lastOriginalReply = string.Empty;
+        _lastThaiTranslation = string.Empty;
+        _showingThai = false;
+        UpdateTranslateButtonLabel();
+        ClearStatus();
+
+        if (npcReplyText != null)
+            npcReplyText.text = string.Empty;
     }
 
     public void FocusInputField()
@@ -91,6 +96,12 @@ public class NPCChatUI : MonoBehaviour
 
     public void OnSendButtonClicked()
     {
+        if (_chatController == null)
+        {
+            Debug.LogError("[NPCChatUI] No active NPC selected. Press E near an NPC first.");
+            return;
+        }
+
         if (playerInputField == null)
         {
             Debug.LogError("[NPCChatUI] Player Input Field is not assigned.");
@@ -110,7 +121,7 @@ public class NPCChatUI : MonoBehaviour
             return;
         }
 
-        Debug.Log($"[NPCChatUI] Sending player message: {message}");
+        Debug.Log($"[NPCChatUI] Sending player message to {_chatController.NpcName}: {message}");
         _chatController.SendPlayerMessageAsync(message);
         playerInputField.text = string.Empty;
         FocusInputField();
@@ -177,6 +188,9 @@ public class NPCChatUI : MonoBehaviour
 
     public void OnResetButtonClicked()
     {
+        if (_chatController == null)
+            return;
+
         _chatController.ResetConversation();
         _lastOriginalReply = string.Empty;
         _lastThaiTranslation = string.Empty;
@@ -186,6 +200,26 @@ public class NPCChatUI : MonoBehaviour
         if (statusText != null) statusText.text = "Conversation reset.";
         if (npcReplyText != null) npcReplyText.text = string.Empty;
         FocusInputField();
+    }
+
+    private void SubscribeToCurrentNpc()
+    {
+        if (_chatController == null)
+            return;
+
+        _chatController.OnRequestStarted.AddListener(HandleRequestStarted);
+        _chatController.OnResponseReceived.AddListener(HandleResponseReceived);
+        _chatController.OnError.AddListener(HandleError);
+    }
+
+    private void UnsubscribeFromCurrentNpc()
+    {
+        if (_chatController == null)
+            return;
+
+        _chatController.OnRequestStarted.RemoveListener(HandleRequestStarted);
+        _chatController.OnResponseReceived.RemoveListener(HandleResponseReceived);
+        _chatController.OnError.RemoveListener(HandleError);
     }
 
     private async Task<string> TranslateReplyToThaiAsync(string englishReply)
@@ -238,7 +272,7 @@ public class NPCChatUI : MonoBehaviour
 
     private void HandleInputSubmitted(string message)
     {
-        if (!_chatController.isChatActive || string.IsNullOrWhiteSpace(message))
+        if (_chatController == null || !_chatController.isChatActive || string.IsNullOrWhiteSpace(message))
             return;
 
         OnSendButtonClicked();
@@ -309,4 +343,3 @@ public class NPCChatUI : MonoBehaviour
         translateButtonLabel.text = _showingThai ? showOriginalLabel : showThaiLabel;
     }
 }
-

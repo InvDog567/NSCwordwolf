@@ -12,18 +12,22 @@ public class NPCChatInteractable : MonoBehaviour
     [SerializeField] private float interactDistance = 3f;
     [SerializeField] private KeyCode interactKey = KeyCode.E;
 
+    [Header("Shared Chat UI")]
+    [SerializeField] private NPCChatUI chatUI;
+
     [Header("Optional UI")]
     [SerializeField] private TMP_Text promptText;
     [SerializeField] private string promptMessage = "Press E to talk";
 
     private NPCChatController _chatController;
-    private NPCChatUI _chatUI;
     private bool _playerInRange;
 
     private void Awake()
     {
         _chatController = GetComponent<NPCChatController>();
-        _chatUI = GetComponent<NPCChatUI>();
+
+        if (chatUI == null)
+            chatUI = GameObject.FindObjectOfType<NPCChatUI>(true);
 
         if (player == null)
         {
@@ -78,11 +82,16 @@ public class NPCChatInteractable : MonoBehaviour
             return;
         }
 
+        if (chatUI == null)
+        {
+            Debug.LogError($"[NPCChatInteractable:{name}] No shared NPCChatUI found in scene.");
+            return;
+        }
+
+        chatUI.SetActiveChatController(_chatController);
         _chatController.OpenChat();
         HidePrompt();
-
-        if (_chatUI != null)
-            _chatUI.FocusInputField();
+        chatUI.FocusInputField();
     }
 
     private void ShowPrompt()
@@ -99,8 +108,6 @@ public class NPCChatInteractable : MonoBehaviour
         if (promptText == null)
             return;
 
-        // Do not disable the GameObject here. If the prompt field is accidentally
-        // assigned to the NPC reply text, disabling it hides the AI response too.
         if (promptText.text == promptMessage)
             promptText.text = string.Empty;
     }
