@@ -1,7 +1,11 @@
-// Assets/kin/OpenAI/Scripts/NPCChatUI.cs
+﻿// Assets/kin/OpenAI/Scripts/NPCChatUI.cs
 
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 using TMPro;
 using UnityEngine;
+using UnityEngine.EventSystems;
 
 [RequireComponent(typeof(NPCChatController))]
 public class NPCChatUI : MonoBehaviour
@@ -10,9 +14,50 @@ public class NPCChatUI : MonoBehaviour
     [SerializeField] private TMP_Text npcReplyText;
     [SerializeField] private TMP_Text statusText;
 
+    [Header("Translation")]
+    [SerializeField] private TMP_Text translateButtonLabel;
+    [SerializeField] private string showThaiLabel = "TH";
+    [SerializeField] private string showOriginalLabel = "EN";
+
     private NPCChatController _chatController;
+    private string _lastOriginalReply = string.Empty;
+    private string _lastThaiTranslation = string.Empty;
+    private bool _showingThai;
+    private bool _isTranslating;
 
     private void Awake() => _chatController = GetComponent<NPCChatController>();
+
+    private void Start()
+    {
+        AutoAssignMissingReferences();
+        UpdateTranslateButtonLabel();
+
+        if (playerInputField != null)
+            playerInputField.onSubmit.AddListener(HandleInputSubmitted);
+    }
+
+    private void Update()
+    {
+        if (playerInputField == null)
+            return;
+
+        if (Input.GetKeyDown(KeyCode.Escape) && _chatController.isChatActive)
+        {
+            _chatController.CloseChat();
+            return;
+        }
+
+        if (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter))
+        {
+            if (!_chatController.isChatActive)
+                _chatController.OpenChat();
+
+            if (playerInputField.isFocused && !string.IsNullOrWhiteSpace(playerInputField.text))
+                OnSendButtonClicked();
+            else
+                FocusInputField();
+        }
+    }
 
     private void OnEnable()
     {
@@ -28,36 +73,240 @@ public class NPCChatUI : MonoBehaviour
         _chatController.OnError.RemoveListener(HandleError);
     }
 
+    private void OnDestroy()
+    {
+        if (playerInputField != null)
+            playerInputField.onSubmit.RemoveListener(HandleInputSubmitted);
+    }
+
+    public void FocusInputField()
+    {
+        if (playerInputField == null)
+            return;
+
+        EventSystem.current?.SetSelectedGameObject(playerInputField.gameObject);
+        playerInputField.Select();
+        playerInputField.ActivateInputField();
+    }
+
     public void OnSendButtonClicked()
     {
-        if (playerInputField == null) return;
-        _chatController.SendPlayerMessageAsync(playerInputField.text);
+        if (playerInputField == null)
+        {
+            Debug.LogError("[NPCChatUI] Player Input Field is not assigned.");
+            return;
+        }
+
+        if (_chatController.IsBusy)
+        {
+            Debug.Log("[NPCChatUI] Ignored send because NPC is still responding.");
+            return;
+        }
+
+        string message = playerInputField.text;
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            FocusInputField();
+            return;
+        }
+
+        Debug.Log($"[NPCChatUI] Sending player message: {message}");
+        _chatController.SendPlayerMessageAsync(message);
         playerInputField.text = string.Empty;
-        playerInputField.ActivateInputField();
+        FocusInputField();
+    }
+
+    public async void OnTranslateToThaiButtonClicked()
+    {
+        Debug.Log("[NPCChatUI] Translate button clicked.");
+
+        if (_isTranslating)
+            return;
+
+        if (string.IsNullOrWhiteSpace(_lastOriginalReply))
+        {
+            SetStatus("No NPC reply to translate yet.");
+            return;
+        }
+
+        if (_showingThai)
+        {
+            ShowReply(_lastOriginalReply);
+            _showingThai = false;
+            UpdateTranslateButtonLabel();
+            FocusInputField();
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(_lastThaiTranslation))
+        {
+            ShowReply(_lastThaiTranslation);
+            _showingThai = true;
+            UpdateTranslateButtonLabel();
+            FocusInputField();
+            return;
+        }
+
+        if (OpenAIManager.Instance == null || !OpenAIManager.Instance.HasValidApiKey)
+        {
+            HandleError("OpenAI API key not configured. Cannot translate.");
+            return;
+        }
+
+        _isTranslating = true;
+        SetStatus("Translating...");
+
+        try
+        {
+            _lastThaiTranslation = await TranslateReplyToThaiAsync(_lastOriginalReply);
+            ShowReply(_lastThaiTranslation);
+            _showingThai = true;
+        }
+        catch (Exception ex)
+        {
+            HandleError($"Translate failed: {ex.Message}");
+        }
+        finally
+        {
+            _isTranslating = false;
+            ClearStatus();
+            UpdateTranslateButtonLabel();
+            FocusInputField();
+        }
     }
 
     public void OnResetButtonClicked()
     {
         _chatController.ResetConversation();
+        _lastOriginalReply = string.Empty;
+        _lastThaiTranslation = string.Empty;
+        _showingThai = false;
+        UpdateTranslateButtonLabel();
+
         if (statusText != null) statusText.text = "Conversation reset.";
         if (npcReplyText != null) npcReplyText.text = string.Empty;
+        FocusInputField();
+    }
+
+    private async Task<string> TranslateReplyToThaiAsync(string englishReply)
+    {
+        var messages = new List<ChatMessage>
+        {
+            new ChatMessage("developer",
+                "Translate the NPC dialogue into natural Thai. Keep the meaning and tone. " +
+                "Do not add explanations. Return Thai translation only."),
+            new ChatMessage("user", englishReply)
+        };
+
+        return await OpenAIManager.Instance.SendChatCompletionAsync(messages);
+    }
+
+    private void AutoAssignMissingReferences()
+    {
+        if (playerInputField == null)
+        {
+            playerInputField = GameObject.FindObjectOfType<TMP_InputField>(true);
+            if (playerInputField != null)
+                Debug.Log($"[NPCChatUI] Automatically found playerInputField: {playerInputField.name}");
+            else
+                Debug.LogError("[NPCChatUI] No TMP_InputField found. Drag InputField (TMP) into Player Input Field.");
+        }
+
+        if (npcReplyText == null)
+        {
+            TMP_Text[] texts = GameObject.FindObjectsOfType<TMP_Text>(true);
+            foreach (TMP_Text text in texts)
+            {
+                if (playerInputField != null && text.transform.IsChildOf(playerInputField.transform))
+                    continue;
+
+                if (text.gameObject.name.ToLower().Contains("placeholder"))
+                    continue;
+
+                if (text.gameObject.name.ToLower().Contains("button"))
+                    continue;
+
+                npcReplyText = text;
+                Debug.Log($"[NPCChatUI] Automatically found npcReplyText: {npcReplyText.gameObject.name}");
+                break;
+            }
+
+            if (npcReplyText == null)
+                Debug.LogError("[NPCChatUI] Npc Reply Text is not assigned. Drag the reply Text (TMP) into Npc Reply Text.");
+        }
+    }
+
+    private void HandleInputSubmitted(string message)
+    {
+        if (!_chatController.isChatActive || string.IsNullOrWhiteSpace(message))
+            return;
+
+        OnSendButtonClicked();
     }
 
     private void HandleRequestStarted()
     {
-        if (statusText != null)
-            statusText.text = $"{_chatController.NpcName} is thinking…";
+        Debug.Log($"[NPCChatUI] {_chatController.NpcName} request started.");
+        SetStatus($"{_chatController.NpcName} is thinking...");
     }
 
     private void HandleResponseReceived(string reply)
     {
-        if (statusText != null) statusText.text = string.Empty;
-        if (npcReplyText != null) npcReplyText.text = reply;
+        Debug.Log($"[NPCChatUI] Response received: {reply}");
+
+        _lastOriginalReply = reply;
+        _lastThaiTranslation = string.Empty;
+        _showingThai = false;
+        UpdateTranslateButtonLabel();
+        ClearStatus();
+        ShowReply(reply);
+        FocusInputField();
     }
 
     private void HandleError(string errorMessage)
     {
+        Debug.LogError($"[NPCChatUI] Chat error: {errorMessage}");
+
         if (statusText != null)
             statusText.text = $"<color=#FF5555>{errorMessage}</color>";
+        else if (npcReplyText != null)
+            npcReplyText.text = $"<color=#FF5555>{errorMessage}</color>";
+
+        FocusInputField();
+    }
+
+    private void ShowReply(string text)
+    {
+        if (npcReplyText == null)
+        {
+            Debug.LogError("[NPCChatUI] Got a response, but Npc Reply Text is not assigned, so it cannot be shown.");
+            return;
+        }
+
+        npcReplyText.gameObject.SetActive(true);
+        npcReplyText.text = text;
+        npcReplyText.ForceMeshUpdate();
+        Canvas.ForceUpdateCanvases();
+    }
+
+    private void SetStatus(string text)
+    {
+        if (statusText != null)
+            statusText.text = text;
+    }
+
+    private void ClearStatus()
+    {
+        if (statusText != null && statusText != npcReplyText)
+            statusText.text = string.Empty;
+    }
+
+    private void UpdateTranslateButtonLabel()
+    {
+        if (translateButtonLabel == null)
+            return;
+
+        translateButtonLabel.text = _showingThai ? showOriginalLabel : showThaiLabel;
     }
 }
+

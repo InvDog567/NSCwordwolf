@@ -1,8 +1,8 @@
 // Assets/kin/OpenAI/Scripts/ChatModels.cs
 
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
-using Newtonsoft.Json;
 
 public enum NPCRole
 {

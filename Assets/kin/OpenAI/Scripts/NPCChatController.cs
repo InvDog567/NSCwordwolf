@@ -1,4 +1,4 @@
-// Assets/kin/OpenAI/Scripts/NPCChatController.cs
+﻿// Assets/kin/OpenAI/Scripts/NPCChatController.cs
 
 using System;
 using System.Collections.Generic;
@@ -13,8 +13,17 @@ public class NPCChatController : MonoBehaviour
     private const string DeveloperRole = "developer";
 
     [Header("NPC Memory")]
-    [Tooltip("จำนวนข้อความที่ NPC จะจำย้อนหลังได้สูงสุด")]
-    [SerializeField] private int maxHistoryMessages = 8;
+    [Tooltip("When user/assistant messages reach this count, old messages are summarized into long-term memory.")]
+    [SerializeField] private int summarizeAfterMessages = 8;
+
+    [Tooltip("How many recent user/assistant messages stay as exact chat history after summarizing.")]
+    [SerializeField] private int recentMessagesToKeep = 4;
+
+    [Tooltip("Used as a safety limit if summarization fails.")]
+    [SerializeField] private int maxHistoryMessages = 12;
+
+    [TextArea(3, 8)]
+    [SerializeField] private string longTermMemorySummary = "";
 
     [Header("NPC Identity")]
     [SerializeField] private string npcName = "Eldric";
@@ -26,11 +35,11 @@ public class NPCChatController : MonoBehaviour
 
     [Header("Knowledge Base")]
     [TextArea(3, 10)]
-    [Tooltip("ความเห็นหรือความสัมพันธ์ต่อคนอื่นๆ ในหมู่บ้าน")]
+    [Tooltip("What this NPC thinks about other villagers.")]
     [SerializeField] private string relationships = "";
 
     [TextArea(2, 6)]
-    [Tooltip("ความลับ ข้อมูลข่าวลือ หรือคำใบ้สำคัญที่ NPC ตัวนี้ล่วงรู้")]
+    [Tooltip("Secrets, rumors, or clues this NPC knows.")]
     [SerializeField] private string secretsOrRumors = "";
 
     [Header("Game Context")]
@@ -51,27 +60,51 @@ public class NPCChatController : MonoBehaviour
     private readonly List<ChatMessage> _conversationHistory = new List<ChatMessage>();
     private bool _isBusy;
     private CancellationTokenSource _activeRequestCts;
+    private Player _player;
+    private bool _chatOpen;
 
     public string NpcName => npcName;
     public bool IsBusy => _isBusy;
-    public bool isChatActive => chatUICanvas != null && chatUICanvas.activeInHierarchy;
+    public bool isChatActive => _chatOpen;
+    public string LongTermMemorySummary => longTermMemorySummary;
+
+    private void Awake()
+    {
+        FindChatCanvasIfNeeded();
+        _player = GameObject.FindObjectOfType<Player>();
+
+        InitializeConversation();
+        CloseChat();
+    }
+
+    private void OnDestroy() => CancelActiveRequest();
 
     public void OpenChat()
     {
+        _chatOpen = true;
+
         if (chatUICanvas != null)
             chatUICanvas.SetActive(true);
+
+        SetPlayerCursorFree(true);
     }
 
     public void CloseChat()
     {
+        _chatOpen = false;
+
         if (chatUICanvas != null)
             chatUICanvas.SetActive(false);
+
+        SetPlayerCursorFree(false);
     }
 
     public void ToggleChat()
     {
-        if (chatUICanvas != null)
-            chatUICanvas.SetActive(!chatUICanvas.activeInHierarchy);
+        if (_chatOpen)
+            CloseChat();
+        else
+            OpenChat();
     }
 
     public void SetGameState(string gameState)
@@ -80,46 +113,16 @@ public class NPCChatController : MonoBehaviour
         RefreshDeveloperPrompt();
     }
 
-    private void Awake()
-    {
-        // ค้นหา ChatPanel อัตโนมัติใน Scene หากไม่ได้ลากใส่ใน Inspector
-        if (chatUICanvas == null)
-        {
-            chatUICanvas = GameObject.Find("ChatPanel");
-            if (chatUICanvas != null)
-            {
-                Debug.Log($"[NPCChatController] Automatically assigned chatUICanvas: {chatUICanvas.name}");
-            }
-            else
-            {
-                var canvas = GameObject.FindObjectOfType<Canvas>();
-                if (canvas != null)
-                {
-                    Transform panel = canvas.transform.Find("ChatPanel");
-                    if (panel != null)
-                    {
-                        chatUICanvas = panel.gameObject;
-                        Debug.Log($"[NPCChatController] Automatically found ChatPanel under Canvas: {chatUICanvas.name}");
-                    }
-                }
-            }
-        }
-
-        InitializeConversation();
-        CloseChat();
-    }
-
-    private void OnDestroy() => CancelActiveRequest();
-
     public void InitializeConversation()
     {
         _conversationHistory.Clear();
-        _conversationHistory.Add(new ChatMessage(DeveloperRole, BuildDeveloperPrompt()));
+        RefreshDeveloperPrompt();
     }
 
     public void ResetConversation()
     {
         CancelActiveRequest();
+        longTermMemorySummary = string.Empty;
         InitializeConversation();
     }
 
@@ -159,14 +162,14 @@ public class NPCChatController : MonoBehaviour
 
         try
         {
+            RefreshDeveloperPrompt();
             _conversationHistory.Add(new ChatMessage("user", playerMessage.Trim()));
-            TrimHistoryToSlidingWindow();
 
             string npcReply = await OpenAIManager.Instance.SendChatCompletionAsync(
                 _conversationHistory, _activeRequestCts.Token);
 
             _conversationHistory.Add(new ChatMessage("assistant", npcReply));
-            TrimHistoryToSlidingWindow();
+            _ = SummarizeOldHistoryIfNeededAsync(_activeRequestCts.Token);
             return npcReply;
         }
         finally
@@ -175,19 +178,131 @@ public class NPCChatController : MonoBehaviour
         }
     }
 
-    private void TrimHistoryToSlidingWindow()
+    private async Task SummarizeOldHistoryIfNeededAsync(CancellationToken cancellationToken)
     {
         int nonDeveloperCount = _conversationHistory.Count - 1;
-        if (nonDeveloperCount <= maxHistoryMessages) return;
-        _conversationHistory.RemoveRange(1, nonDeveloperCount - maxHistoryMessages);
+        if (nonDeveloperCount < summarizeAfterMessages)
+            return;
+
+        int safeRecentCount = Mathf.Clamp(recentMessagesToKeep, 0, nonDeveloperCount);
+        int messagesToSummarize = nonDeveloperCount - safeRecentCount;
+        if (messagesToSummarize <= 0)
+            return;
+
+        List<ChatMessage> oldMessages = _conversationHistory.GetRange(1, messagesToSummarize);
+        List<ChatMessage> recentMessages = _conversationHistory.GetRange(1 + messagesToSummarize, safeRecentCount);
+
+        try
+        {
+            string updatedSummary = await RequestMemorySummaryAsync(oldMessages, cancellationToken);
+            longTermMemorySummary = updatedSummary.Trim();
+
+            _conversationHistory.Clear();
+            _conversationHistory.Add(new ChatMessage(DeveloperRole, BuildDeveloperPrompt()));
+            _conversationHistory.AddRange(recentMessages);
+
+            Debug.Log($"[NPCChat:{npcName}] Summarized {oldMessages.Count} messages into long-term memory.");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[NPCChat:{npcName}] Memory summary failed, using sliding window fallback: {ex.Message}");
+            TrimHistoryToSafetyLimit();
+        }
+    }
+
+    private async Task<string> RequestMemorySummaryAsync(List<ChatMessage> oldMessages, CancellationToken cancellationToken)
+    {
+        var summaryMessages = new List<ChatMessage>
+        {
+            new ChatMessage("developer",
+                "You summarize conversation memory for a medieval werewolf mystery NPC. " +
+                "Keep only facts that the NPC should remember later: player claims, accusations, clues, promises, suspicions, and important emotional reactions. " +
+                "Do not roleplay. Do not add new facts. Keep it concise, under 120 words."),
+            new ChatMessage("user", BuildSummaryPrompt(oldMessages))
+        };
+
+        return await OpenAIManager.Instance.SendChatCompletionAsync(summaryMessages, cancellationToken);
+    }
+
+    private string BuildSummaryPrompt(List<ChatMessage> oldMessages)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"NPC name: {npcName}");
+        sb.AppendLine("Existing long-term memory:");
+        sb.AppendLine(string.IsNullOrWhiteSpace(longTermMemorySummary) ? "None yet." : longTermMemorySummary.Trim());
+        sb.AppendLine();
+        sb.AppendLine("New conversation to merge into memory:");
+
+        foreach (ChatMessage message in oldMessages)
+        {
+            if (message.Role == DeveloperRole)
+                continue;
+
+            string speaker = message.Role == "assistant" ? npcName : "Player";
+            sb.AppendLine($"{speaker}: {message.Content}");
+        }
+
+        sb.AppendLine();
+        sb.AppendLine("Return the updated long-term memory summary only.");
+        return sb.ToString();
+    }
+
+    private void FindChatCanvasIfNeeded()
+    {
+        if (chatUICanvas != null)
+            return;
+
+        chatUICanvas = GameObject.Find("ChatPanel");
+        if (chatUICanvas != null)
+        {
+            Debug.Log($"[NPCChatController] Automatically assigned chatUICanvas: {chatUICanvas.name}");
+            return;
+        }
+
+        Canvas canvas = GameObject.FindObjectOfType<Canvas>();
+        if (canvas == null)
+            return;
+
+        Transform panel = canvas.transform.Find("ChatPanel");
+        if (panel != null)
+        {
+            chatUICanvas = panel.gameObject;
+            Debug.Log($"[NPCChatController] Automatically found ChatPanel under Canvas: {chatUICanvas.name}");
+        }
+    }
+
+    private void SetPlayerCursorFree(bool free)
+    {
+        if (_player == null)
+            _player = GameObject.FindObjectOfType<Player>();
+
+        if (_player != null)
+            _player.SetCursorFree(free);
+        else
+        {
+            Cursor.lockState = free ? CursorLockMode.None : CursorLockMode.Locked;
+            Cursor.visible = free;
+        }
+    }
+
+    private void TrimHistoryToSafetyLimit()
+    {
+        int nonDeveloperCount = _conversationHistory.Count - 1;
+        if (nonDeveloperCount <= maxHistoryMessages)
+            return;
+
+        int removeCount = nonDeveloperCount - maxHistoryMessages;
+        _conversationHistory.RemoveRange(1, removeCount);
     }
 
     private void RefreshDeveloperPrompt()
     {
+        var prompt = new ChatMessage(DeveloperRole, BuildDeveloperPrompt());
+
         if (_conversationHistory.Count == 0)
-            _conversationHistory.Add(new ChatMessage(DeveloperRole, BuildDeveloperPrompt()));
+            _conversationHistory.Add(prompt);
         else
-            _conversationHistory[0] = new ChatMessage(DeveloperRole, BuildDeveloperPrompt());
+            _conversationHistory[0] = prompt;
     }
 
     private string BuildDeveloperPrompt()
@@ -217,6 +332,12 @@ public class NPCChatController : MonoBehaviour
             sb.AppendLine(secretsOrRumors.Trim());
         }
 
+        if (!string.IsNullOrWhiteSpace(longTermMemorySummary))
+        {
+            sb.AppendLine("LONG-TERM CONVERSATION MEMORY:");
+            sb.AppendLine(longTermMemorySummary.Trim());
+        }
+
         sb.AppendLine($"English difficulty: {englishDifficulty}");
         sb.AppendLine($"Grammar tense: {targetGrammarTense}");
         return sb.ToString().Trim();
@@ -230,3 +351,4 @@ public class NPCChatController : MonoBehaviour
         _activeRequestCts = null;
     }
 }
+
