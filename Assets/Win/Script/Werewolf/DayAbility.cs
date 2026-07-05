@@ -30,6 +30,7 @@ public class DayAbility : MonoBehaviour
     private bool vigilanteActedThisDay = false;
     private bool waitingForVigilanteChoice = false;
     private bool vigilanteChoiceReady = false;
+    private int vigilanteChoiceReadyFrames = 0;
     private PlayerRole vigilanteTarget = null;
 
     private bool showingResult = false;
@@ -41,7 +42,12 @@ public class DayAbility : MonoBehaviour
         playerRole = GetComponent<PlayerRole>();
 
         if (GameManager.Instance != null)
+        {
             GameManager.Instance.ResetDayState();
+
+            if (NPCRoleLogic.Instance != null)
+                NPCRoleLogic.Instance.RunDayActions();
+        }
 
         if (vigilanteChoicePanel != null)
             vigilanteChoicePanel.SetActive(false);
@@ -51,8 +57,6 @@ public class DayAbility : MonoBehaviour
     {
         if (playerRole == null) return;
 
-        // Show result message for a few seconds
-        // block all other UI during this time
         if (showingResult)
         {
             infoText.text = resultMessage;
@@ -64,7 +68,6 @@ public class DayAbility : MonoBehaviour
                 resultMessage = "";
                 infoText.text = "";
             }
-
             return;
         }
 
@@ -105,11 +108,8 @@ public class DayAbility : MonoBehaviour
         if (hitSomething)
         {
             PlayerRole target =
-                hit.collider.GetComponent<PlayerRole>();
-
-            if (target == null)
-                target = hit.collider
-                    .GetComponentInParent<PlayerRole>();
+                hit.collider.GetComponent<PlayerRole>() ??
+                hit.collider.GetComponentInParent<PlayerRole>();
 
             if (target != null && !target.isPlayer && !target.isDead)
             {
@@ -154,6 +154,12 @@ public class DayAbility : MonoBehaviour
             return;
         }
 
+        if (GameManager.Instance.gunnerShotThisDay)
+        {
+            infoText.text = "Already shot today";
+            return;
+        }
+
         if (Input.GetKey(KeyCode.E))
         {
             holdTimerE += Time.deltaTime;
@@ -163,6 +169,7 @@ public class DayAbility : MonoBehaviour
             {
                 holdTimerE = 0;
                 ShootGunner(target);
+                GameManager.Instance.gunnerShotThisDay = true;
             }
         }
         else
@@ -214,9 +221,7 @@ public class DayAbility : MonoBehaviour
     void HandleVigilanteTarget(PlayerRole target)
     {
         if (vigilanteActedThisDay)
-        {
             return;
-        }
 
         bool shootUsed = GameManager.Instance.vigilanteUsedShoot;
         bool revealUsed = GameManager.Instance.vigilanteUsedReveal;
@@ -237,6 +242,8 @@ public class DayAbility : MonoBehaviour
                 vigilanteTarget = target;
                 waitingForVigilanteChoice = true;
                 vigilanteChoiceReady = false;
+                vigilanteChoiceReadyFrames = 0;
+
                 holdTimerE = 0;
                 holdTimerQ = 0;
                 infoText.text = "";
@@ -246,10 +253,8 @@ public class DayAbility : MonoBehaviour
 
                 if (vigilanteChoiceInfoText != null)
                 {
-                    string shootText = shootUsed
-                        ? "[Shoot used]" : "[Q] Shoot";
-                    string revealText = revealUsed
-                        ? "[Reveal used]" : "[E] Reveal Role";
+                    string shootText = shootUsed ? "[Shoot used]" : "[Q] Shoot";
+                    string revealText = revealUsed ? "[Reveal used]" : "[E] Reveal Role";
 
                     vigilanteChoiceInfoText.text =
                         shootText + "  |  " + revealText;
@@ -265,11 +270,14 @@ public class DayAbility : MonoBehaviour
 
     void HandleVigilanteChoice()
     {
-        // Wait 2 frames before reading any input
         if (!vigilanteChoiceReady)
         {
+            vigilanteChoiceReadyFrames++;
+
+            if (vigilanteChoiceReadyFrames < 3)
+                return;
+
             vigilanteChoiceReady = true;
-            return;
         }
 
         bool shootUsed = GameManager.Instance.vigilanteUsedShoot;
@@ -277,41 +285,27 @@ public class DayAbility : MonoBehaviour
 
         if (Input.GetKeyUp(vigilanteShootKey) && !shootUsed)
         {
-            if (vigilanteTarget == null)
-            {
-                CloseVigilantePanel("");
-                return;
-            }
-
             int idx = vigilanteTarget.npcIndex;
+
             GameManager.Instance.npcAlive[idx] = false;
             GameManager.Instance.vigilanteUsedShoot = true;
             vigilanteActedThisDay = true;
+
             vigilanteTarget.isDead = true;
             vigilanteTarget.gameObject.SetActive(false);
-            vigilanteTarget = null;
 
             CloseVigilantePanel("");
             ShowResult("Shot!");
-            Debug.Log("Vigilante shot NPC " + idx);
         }
         else if (Input.GetKeyUp(vigilanteRevealKey) && !revealUsed)
         {
-            if (vigilanteTarget == null)
-            {
-                CloseVigilantePanel("");
-                return;
-            }
-
             string role = vigilanteTarget.currentRole.ToString();
-            int idx = vigilanteTarget.npcIndex;
+
             GameManager.Instance.vigilanteUsedReveal = true;
             vigilanteActedThisDay = true;
-            vigilanteTarget = null;
 
             CloseVigilantePanel("");
             ShowResult("Role: " + role);
-            Debug.Log("Vigilante revealed NPC " + idx + " is " + role);
         }
     }
 
@@ -319,6 +313,8 @@ public class DayAbility : MonoBehaviour
     {
         waitingForVigilanteChoice = false;
         vigilanteChoiceReady = false;
+        vigilanteChoiceReadyFrames = 0;
+
         holdTimerE = 0;
         holdTimerQ = 0;
 
@@ -333,15 +329,12 @@ public class DayAbility : MonoBehaviour
     {
         GameManager.Instance.gunnerBulletsLeft--;
         GameManager.Instance.npcAlive[target.npcIndex] = false;
+
         target.isDead = true;
         target.gameObject.SetActive(false);
 
         ShowResult("Shot!");
-        Debug.Log("Gunner shot NPC " + target.npcIndex +
-                  " | Bullets left: " +
-                  GameManager.Instance.gunnerBulletsLeft);
 
-        int result = GameManager.Instance.CheckWinCondition();
-        Debug.Log("Win check after shot: " + result);
+        GameManager.Instance.CheckWinCondition();
     }
 }

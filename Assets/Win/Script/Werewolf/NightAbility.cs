@@ -389,15 +389,14 @@ public class NightAbility : MonoBehaviour
         infoText.text = message;
     }
 
-    void HandleNoTarget()
+        void HandleNoTarget()
     {
         if (playerRole.currentRole == PlayerRole.Role.Doctor && !usedAbility)
         {
-            infoText.text = "Hold E to protect yourself";
-
             if (Input.GetKey(KeyCode.E))
             {
                 holdTimerE += Time.deltaTime;
+                infoText.text = "Protecting yourself...";
 
                 if (holdTimerE >= holdTime)
                 {
@@ -410,6 +409,7 @@ public class NightAbility : MonoBehaviour
             else
             {
                 holdTimerE = 0;
+                infoText.text = "Hold E to protect yourself";
             }
         }
         else
@@ -450,15 +450,27 @@ public class NightAbility : MonoBehaviour
             {
                 GameManager.Instance.npcAlive[jailed] = false;
                 holdTimerE = 0;
-                infoText.text = "Executed";
                 justExecuted = true;
-                Debug.Log("Jailer executed NPC " + jailed);
                 GameManager.Instance.jailerUsedBullet = true;
+
+                StartCoroutine(
+                    ShowThenClear("Executed", 1.5f));
+
+                Debug.Log("Jailer executed NPC " + jailed);
             }
         }
         else
         {
             holdTimerE = 0;
         }
+    }
+
+    System.Collections.IEnumerator ShowThenClear(string message, float seconds)
+    {
+        infoText.text = message;
+        yield return new WaitForSeconds(seconds);
+
+        if (infoText.text == message)
+            infoText.text = "";
     }
 }
