@@ -13,11 +13,10 @@ public class CarpenterManager : MonoBehaviour
 
     [Header("=== UI ===")]
     public Button submitButton;
-    public Button toggleHintButton;
     public TextMeshProUGUI resultText;
     public TextMeshProUGUI instructionText;
+    public TextMeshProUGUI blueprintNameText;   // แสดงชื่อแบบพิมพ์ที่สุ่มได้
 
-    private bool isHintShowing = false;
     private bool isGameOver = false;
 
     void Start()
@@ -29,7 +28,15 @@ public class CarpenterManager : MonoBehaviour
         CheckRef(resultText, "resultText");
 
         resultText.text = "";
-        instructionText.text = "Drag the mouse to carve the wood\nPress HINT to see the blueprint";
+
+        // แสดงชื่อแบบพิมพ์ที่สุ่มได้
+        if (blueprintNameText != null)
+            blueprintNameText.text = $"Blueprint: {blueprintData.GetPatternName()}";
+
+        instructionText.text = "Drag the mouse to carve the wood\nFollow the blueprint shape";
+
+        // แสดง Blueprint Hint ตลอดเวลาทันที ไม่ต้องกดปุ่ม
+        ShowBlueprintAlways();
     }
 
     void CheckRef(Object obj, string name)
@@ -40,20 +47,18 @@ public class CarpenterManager : MonoBehaviour
             Debug.Log("[OK] " + name);
     }
 
-    public void ToggleHint()
+    // แสดง Blueprint ทันทีตั้งแต่เริ่ม ไม่ต้องกด HINT
+    void ShowBlueprintAlways()
     {
-        isHintShowing = !isHintShowing;
+        voxelGrid.ShowBlueprintHint(blueprintData, blueprintHintMaterial, woodNormalMaterial);
+        Debug.Log("Blueprint shown automatically");
+    }
 
-        if (isHintShowing)
-        {
+    // อัปเดต Blueprint ทุกครั้งที่มีการแกะไม้ (เรียกจาก CarveController)
+    public void RefreshBlueprint()
+    {
+        if (!isGameOver)
             voxelGrid.ShowBlueprintHint(blueprintData, blueprintHintMaterial, woodNormalMaterial);
-            Debug.Log("Hint ON");
-        }
-        else
-        {
-            voxelGrid.HideBlueprintHint(woodNormalMaterial);
-            Debug.Log("Hint OFF");
-        }
     }
 
     public void SubmitCarving()
