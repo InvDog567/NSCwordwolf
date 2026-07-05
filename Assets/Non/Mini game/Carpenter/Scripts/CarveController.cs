@@ -5,6 +5,7 @@ public class CarveController : MonoBehaviour
 {
     [Header("=== References ===")]
     public VoxelGrid voxelGrid;
+    public CarpenterManager carpenterManager;  // ✅ เพิ่มใหม่
     public Camera carveCamera;
 
     [Header("=== Settings ===")]
@@ -15,20 +16,10 @@ public class CarveController : MonoBehaviour
 
     void Update()
     {
-        if (Input.GetMouseButtonDown(0))
-        {
-            isDragging = true;
-        }
+        if (Input.GetMouseButtonDown(0)) isDragging = true;
+        if (Input.GetMouseButtonUp(0)) isDragging = false;
 
-        if (Input.GetMouseButtonUp(0))
-        {
-            isDragging = false;
-        }
-
-        if (isDragging)
-        {
-            TryCarveAtMousePosition();
-        }
+        if (isDragging) TryCarveAtMousePosition();
     }
 
     void TryCarveAtMousePosition()
@@ -43,7 +34,10 @@ public class CarveController : MonoBehaviour
             if (voxelGrid.TryGetGridPosition(hitObject, out int row, out int col))
             {
                 voxelGrid.CarveVoxel(row, col);
-                Debug.Log($"Carved voxel at [{row}, {col}]");
+
+                // ✅ อัปเดต Blueprint ทุกครั้งที่แกะ (ให้ Hint ยังคงแสดงอยู่บน Voxel ที่เหลือ)
+                if (carpenterManager != null)
+                    carpenterManager.RefreshBlueprint();
             }
         }
     }
