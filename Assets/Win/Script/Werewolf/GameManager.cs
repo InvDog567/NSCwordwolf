@@ -22,7 +22,6 @@ public class GameManager : MonoBehaviour
     [HideInInspector] public List<bool> npcDoused = new List<bool>();
     [HideInInspector] public bool playerKilledByWolf = false;
     [HideInInspector] public bool playerDoused = false;
-
     [HideInInspector] public int doctorProtectedIndex = -1;
     [HideInInspector] public bool doctorProtectedPlayer = false;
 
@@ -48,6 +47,7 @@ public class GameManager : MonoBehaviour
 
     [HideInInspector] public int debugForceKillIndex = -1;
     [HideInInspector] public bool wolfKillDoneThisNight = false;
+    [HideInInspector] public bool playerKilledByArsonist = false;
 
     void Awake()
     {
@@ -116,6 +116,7 @@ public class GameManager : MonoBehaviour
         npcDoused.Clear();
         playerKilledByWolf = false;
         playerDoused = false;
+        playerKilledByArsonist = false;
         doctorProtectedIndex = -1;
         doctorProtectedPlayer = false;
         jailedNPCIndex = -1;
@@ -198,22 +199,22 @@ public class GameManager : MonoBehaviour
     }
 
     public void IgniteAllDoused()
+{
+    for (int i = 0; i < npcDoused.Count; i++)
     {
-        for (int i = 0; i < npcDoused.Count; i++)
+        if (npcDoused[i] && npcAlive[i])
         {
-            if (npcDoused[i] && npcAlive[i])
-            {
-                npcAlive[i] = false;
-                Debug.Log("Arsonist ignited NPC " + i);
-            }
-        }
-
-        if (playerDoused)
-        {
-            playerKilledByWolf = true;
-            Debug.Log("Arsonist ignited the PLAYER");
+            npcAlive[i] = false;
+            Debug.Log("Arsonist ignited NPC " + i);
         }
     }
+
+    if (playerDoused)
+    {
+        playerKilledByArsonist = true;
+        Debug.Log("Arsonist ignited the PLAYER");
+    }
+}
 
     public void NPCWerewolfKill()
     {

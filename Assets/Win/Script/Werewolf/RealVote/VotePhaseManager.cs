@@ -19,11 +19,6 @@ public class VotePhaseManager : MonoBehaviour
     public TMP_Text timerText;
     public TMP_Text voteLogText;
 
-    [Header("Scenes")]
-    public string daySceneName;
-    public string loseSceneName;
-    public string winSceneName;
-
     [Header("Current State")]
     public Phase currentPhase = Phase.Discussion;
 
@@ -32,10 +27,19 @@ public class VotePhaseManager : MonoBehaviour
     private int playerVoteIndex = -1;
     private Dictionary<int, int> voteTally = new Dictionary<int, int>();
 
+    [Header("Scenes")]
+public string daySceneName;
+public string voteExecutedSceneName;   // player voted out
+public string wolfKilledSceneName;     // wolf killed player
+public string arsonistKilledSceneName; // arsonist ignited player
+public string villagerWinSceneName;    // player was villager-aligned, wolves eliminated
+public string werewolfWinSceneName;    // player was werewolf, wolves won
+public string arsonistWinSceneName;    // player was arsonist, villagers won (arsonist side wins alongside villagers)
+
     void Start()
     {
         if (voteButtonsContainer != null)
-            voteButtonsContainer.SetActive(false);
+            voteButtonsContainer.SetActive(true);
 
         StartCoroutine(RunDiscussionPhase());
     }
@@ -73,15 +77,6 @@ public class VotePhaseManager : MonoBehaviour
         if (phaseText != null)
             phaseText.text = "Voting Phase";
 
-        if (voteButtonsContainer != null)
-        {
-            voteButtonsContainer.SetActive(true);
-            Debug.Log("Vote buttons container activated: " + voteButtonsContainer.activeSelf);
-        }
-        else
-        {
-            Debug.LogWarning("voteButtonsContainer is NULL - assign it in Inspector!");
-        }
 
         voteTally.Clear();
         playerHasVoted = false;
@@ -160,76 +155,85 @@ public class VotePhaseManager : MonoBehaviour
     }
 
     void ResolveVotes()
+{
+    currentPhase = Phase.Resolved;
+
+    if (voteTally.Count == 0)
     {
-        Debug.Log("ResolveVotes called | tally count: " + voteTally.Count);
-
-        currentPhase = Phase.Resolved;
-
-        if (voteButtonsContainer != null)
-            voteButtonsContainer.SetActive(false);
-
-        if (voteTally.Count == 0)
-        {
-            Debug.Log("No votes were cast at all - nobody dies");
-            if (phaseText != null)
-                phaseText.text = "No votes cast, no one executed";
-            StartCoroutine(GoToDayAfterDelay());
-            return;
-        }
-
-        int topIndex = -1;
-        int topVotes = -1;
-        foreach (var kvp in voteTally)
-        {
-            Debug.Log("Tally entry -> NPC/Player " + kvp.Key + " : " + kvp.Value + " votes");
-            if (kvp.Value > topVotes)
-            {
-                topVotes = kvp.Value;
-                topIndex = kvp.Key;
-            }
-        }
-
-        Debug.Log("Top voted index: " + topIndex + " with " + topVotes + " votes");
-
-        if (topIndex == -1)
-        {
-            Debug.LogWarning("Player was voted out - not yet handled by this script!");
-            StartCoroutine(GoToDayAfterDelay());
-            return;
-        }
-
         if (phaseText != null)
-            phaseText.text = "NPC " + topIndex + " was voted out";
-
-        if (topIndex < 0 || topIndex >= GameManager.Instance.npcAlive.Count)
-        {
-            Debug.LogError("topIndex " + topIndex + " is out of range for npcAlive list!");
-            StartCoroutine(GoToDayAfterDelay());
-            return;
-        }
-
-        GameManager.Instance.npcAlive[topIndex] = false;
-        Debug.Log("Voted out NPC " + topIndex +
-            " | Role: " + GameManager.Instance.savedNPCRoles[topIndex]);
-
-        int result = GameManager.Instance.CheckWinCondition();
-        Debug.Log("Win condition result: " + result);
-
-        if (result == 1)
-        {
-            StartCoroutine(GoToSceneAfterDelay(winSceneName));
-        }
-        else if (result == 2)
-        {
-            StartCoroutine(GoToSceneAfterDelay(loseSceneName));
-        }
-        else
-        {
-            StartCoroutine(GoToDayAfterDelay());
-        }
+            phaseText.text = "No votes cast, no one executed";
+        StartCoroutine(GoToDayAfterDelay());
+        return;
     }
 
-    IEnumerator GoToDayAfterDelay()
+    int topVotes = -1;
+    foreach (var kvp in voteTally)
+    {
+        if (kvp.Value > topVotes)
+            topVotes = kvp.Value;
+    }
+
+    List<int> topCandidates = new List<int>();
+    foreach (var kvp in voteTally)
+    {
+        if (kvp.Value == topVotes)
+            topCandidates.Add(kvp.Key);
+    }
+
+    if (topCandidates.Count > 1)
+    {
+        Debug.Log("Tie vote between: " + string.Join(", ", topCandidates));
+        if (phaseText != null)
+            phaseText.text = "Vote tied, no one executed";
+        StartCoroutine(GoToDayAfterDelay());
+        return;
+    }
+
+    int topIndex = topCandidates[0];
+
+    if (topIndex == -1)
+    {
+        // Player was voted out
+        if (phaseText != null)
+            phaseText.text = "You were voted out";
+
+        StartCoroutine(GoToSceneAfterDelay(voteExecutedSceneName));
+        return;
+    }
+
+    if (phaseText != null)
+        phaseText.text = "NPC " + topIndex + " was voted out";
+
+    GameManager.Instance.npcAlive[topIndex] = false;
+    Debug.Log("Voted out NPC " + topIndex +
+        " | Role: " + GameManager.Instance.savedNPCRoles[topIndex]);
+
+    ResolveOutcome();
+}
+
+void ResolveOutcome()
+{
+    int result = GameManager.Instance.CheckWinCondition();
+
+    if (result == 1)
+    {
+        // Villagers side won
+        if (GameManager.Instance.playerRole == PlayerRole.Role.Arsonist)
+            StartCoroutine(GoToSceneAfterDelay(arsonistWinSceneName));
+        else
+            StartCoroutine(GoToSceneAfterDelay(villagerWinSceneName));
+    }
+    else if (result == 2)
+    {
+        // Wolves side won
+        StartCoroutine(GoToSceneAfterDelay(werewolfWinSceneName));
+    }
+    else
+    {
+        StartCoroutine(GoToDayAfterDelay());
+    }
+}
+IEnumerator GoToDayAfterDelay()
     {
         yield return new WaitForSeconds(3f);
         SceneManager.LoadScene(daySceneName);
