@@ -9,6 +9,13 @@ using UnityEngine.EventSystems;
 
 public class NPCChatUI : MonoBehaviour
 {
+    private class ChatDisplayState
+    {
+        public string originalReply;
+        public string thaiTranslation;
+        public bool showingThai;
+    }
+
     [Header("UI References")]
     [SerializeField] private TMP_InputField playerInputField;
     [SerializeField] private TMP_Text npcReplyText;
@@ -24,6 +31,8 @@ public class NPCChatUI : MonoBehaviour
     private string _lastThaiTranslation = string.Empty;
     private bool _showingThai;
     private bool _isTranslating;
+    private readonly Dictionary<NPCChatController, ChatDisplayState> _displayStates =
+        new Dictionary<NPCChatController, ChatDisplayState>();
 
     private void Start()
     {
@@ -70,18 +79,20 @@ public class NPCChatUI : MonoBehaviour
         if (_chatController == chatController)
             return;
 
+        SaveCurrentDisplayState();
         UnsubscribeFromCurrentNpc();
         _chatController = chatController;
         SubscribeToCurrentNpc();
 
-        _lastOriginalReply = string.Empty;
-        _lastThaiTranslation = string.Empty;
-        _showingThai = false;
+        RestoreDisplayState();
         UpdateTranslateButtonLabel();
         ClearStatus();
 
-        if (npcReplyText != null)
-            npcReplyText.text = string.Empty;
+        if (npcReplyText == null)
+            return;
+
+        string visibleReply = _showingThai ? _lastThaiTranslation : _lastOriginalReply;
+        npcReplyText.text = visibleReply;
     }
 
     public void FocusInputField()
@@ -192,6 +203,7 @@ public class NPCChatUI : MonoBehaviour
             return;
 
         _chatController.ResetConversation();
+        _displayStates.Remove(_chatController);
         _lastOriginalReply = string.Empty;
         _lastThaiTranslation = string.Empty;
         _showingThai = false;
@@ -295,6 +307,39 @@ public class NPCChatUI : MonoBehaviour
         ClearStatus();
         ShowReply(reply);
         FocusInputField();
+    }
+
+    private void SaveCurrentDisplayState()
+    {
+        if (_chatController == null)
+            return;
+
+        _displayStates[_chatController] = new ChatDisplayState
+        {
+            originalReply = _lastOriginalReply,
+            thaiTranslation = _lastThaiTranslation,
+            showingThai = _showingThai
+        };
+    }
+
+    private void RestoreDisplayState()
+    {
+        _lastOriginalReply = string.Empty;
+        _lastThaiTranslation = string.Empty;
+        _showingThai = false;
+
+        if (_chatController == null)
+            return;
+
+        if (_displayStates.TryGetValue(_chatController, out ChatDisplayState state))
+        {
+            _lastOriginalReply = state.originalReply ?? string.Empty;
+            _lastThaiTranslation = state.thaiTranslation ?? string.Empty;
+            _showingThai = state.showingThai && !string.IsNullOrWhiteSpace(_lastThaiTranslation);
+            return;
+        }
+
+        _lastOriginalReply = _chatController.LastResponse;
     }
 
     private void HandleError(string errorMessage)
