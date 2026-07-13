@@ -45,6 +45,11 @@ public class NPCChatController : MonoBehaviour
     [Header("Game Context")]
     [SerializeField] private string currentGameState = "It is daytime.";
 
+    [Header("Overhearing")]
+    [SerializeField] private bool allowNearbyNPCsToOverhear = true;
+    [SerializeField] private float overhearDistance = 7f;
+    [SerializeField] private LayerMask overhearingLayers = Physics.DefaultRaycastLayers;
+
     [Header("English Settings")]
     [SerializeField] private EnglishDifficulty englishDifficulty = EnglishDifficulty.Intermediate;
     [SerializeField] private GrammarTense targetGrammarTense = GrammarTense.PresentSimple;
@@ -61,17 +66,21 @@ public class NPCChatController : MonoBehaviour
     private bool _isBusy;
     private CancellationTokenSource _activeRequestCts;
     private Player _player;
+    private NPCMemory _npcMemory;
     private bool _chatOpen;
+    private string _lastResponse = string.Empty;
 
     public string NpcName => npcName;
     public bool IsBusy => _isBusy;
     public bool isChatActive => _chatOpen;
     public string LongTermMemorySummary => longTermMemorySummary;
+    public string LastResponse => _lastResponse;
 
     private void Awake()
     {
         FindChatCanvasIfNeeded();
         _player = GameObject.FindObjectOfType<Player>();
+        _npcMemory = GetComponent<NPCMemory>();
 
         InitializeConversation();
         CloseChat();
@@ -123,6 +132,7 @@ public class NPCChatController : MonoBehaviour
     {
         CancelActiveRequest();
         longTermMemorySummary = string.Empty;
+        _lastResponse = string.Empty;
         InitializeConversation();
     }
 
@@ -169,6 +179,10 @@ public class NPCChatController : MonoBehaviour
                 _conversationHistory, _activeRequestCts.Token);
 
             _conversationHistory.Add(new ChatMessage("assistant", npcReply));
+            _lastResponse = npcReply;
+            if (allowNearbyNPCsToOverhear)
+                NPCConversationAwareness.ShareConversation(this, npcReply, overhearDistance, overhearingLayers);
+
             _ = SummarizeOldHistoryIfNeededAsync(_activeRequestCts.Token);
             return npcReply;
         }
@@ -338,6 +352,12 @@ public class NPCChatController : MonoBehaviour
             sb.AppendLine(longTermMemorySummary.Trim());
         }
 
+        if (_npcMemory != null && _npcMemory.HasMemories)
+        {
+            sb.AppendLine("THINGS YOU PERSONALLY WITNESSED:");
+            sb.AppendLine(_npcMemory.BuildPromptMemory());
+        }
+
         sb.AppendLine($"English difficulty: {englishDifficulty}");
         sb.AppendLine($"Grammar tense: {targetGrammarTense}");
         return sb.ToString().Trim();
@@ -351,4 +371,3 @@ public class NPCChatController : MonoBehaviour
         _activeRequestCts = null;
     }
 }
-
