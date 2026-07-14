@@ -13,15 +13,21 @@ public class BlacksmithManager : MonoBehaviour
     public RectTransform sweetSpot;
     public TextMeshProUGUI hitText;
     public TextMeshProUGUI comboText;
-    public TextMeshProUGUI weaponNameText;    // ชื่ออาวุธปัจจุบัน
-    public TextMeshProUGUI weaponCountText;   // WEAPON: 1/4
-    public TextMeshProUGUI roundText;         // ROUND: 1/5
+    public TextMeshProUGUI weaponNameText;
+    public TextMeshProUGUI weaponCountText;
+    public TextMeshProUGUI roundText;
     public TextMeshProUGUI timerText;
-    public TextMeshProUGUI earningsText;      // เงินที่ได้อาวุธนี้
-    public TextMeshProUGUI totalEarningsText; // เงินรวมทั้งหมด
-    public TextMeshProUGUI resultText;        // ผลลัพธ์ตอนจบเกม
-    public GameObject summaryPanel;           // Panel แสดงสรุปตอนจบ
-    public TextMeshProUGUI summaryText;       // รายละเอียดสรุปแต่ละอาวุธ
+    public TextMeshProUGUI earningsText;
+    public TextMeshProUGUI totalEarningsText;
+    public TextMeshProUGUI resultText;
+    public GameObject summaryPanel;
+    public TextMeshProUGUI summaryText;
+
+    [Header("=== 3D References ===")]
+    public HammerAnimation hammerAnimation;   // ค้อน 3D
+    public SparkEffect sparkEffect;           // ประกายไฟ
+    public Renderer weaponRenderer;           // WeaponOnAnvil Renderer
+    public Light forgeGlowLight;             // แสงเตา (ปรับความสว่างตอน HIT)
 
     [Header("=== Settings ===")]
     public float timePerRound = 3f;
@@ -31,21 +37,26 @@ public class BlacksmithManager : MonoBehaviour
     public float minSweetSpotWidth = 40f;
     public float indicatorSpeed = 300f;
 
+    // URP
+    private static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
+
     // Weapon Database
+    [System.Serializable]
     private struct WeaponData
     {
         public string weaponName;
         public int basePrice;
+        public Color metalColor;   // สีของเหล็กที่กำลังตี
     }
 
     private List<WeaponData> weaponDatabase = new List<WeaponData>
     {
-        new WeaponData { weaponName = "Sword",   basePrice = 100 },
-        new WeaponData { weaponName = "Axe",     basePrice = 80  },
-        new WeaponData { weaponName = "Spear",   basePrice = 90  },
-        new WeaponData { weaponName = "Shield",  basePrice = 70  },
-        new WeaponData { weaponName = "Dagger",  basePrice = 60  },
-        new WeaponData { weaponName = "Hammer",  basePrice = 85  },
+        new WeaponData { weaponName = "Sword",   basePrice = 100, metalColor = new Color(0.8f, 0.4f, 0.1f) },
+        new WeaponData { weaponName = "Axe",     basePrice = 80,  metalColor = new Color(0.9f, 0.3f, 0.05f) },
+        new WeaponData { weaponName = "Spear",   basePrice = 90,  metalColor = new Color(0.85f, 0.35f, 0.08f) },
+        new WeaponData { weaponName = "Shield",  basePrice = 70,  metalColor = new Color(0.7f, 0.5f, 0.15f) },
+        new WeaponData { weaponName = "Dagger",  basePrice = 60,  metalColor = new Color(0.9f, 0.45f, 0.1f) },
+        new WeaponData { weaponName = "Hammer",  basePrice = 85,  metalColor = new Color(0.75f, 0.38f, 0.08f) },
     };
 
     // Session State
@@ -58,9 +69,8 @@ public class BlacksmithManager : MonoBehaviour
     // Per-weapon State
     private WeaponData currentWeapon;
     private int currentRound = 0;
-    private int hitCount = 0;        // จำนวน HIT ในอาวุธนี้
+    private int hitCount = 0;
     private int comboCount = 0;
-    private float currentSweetSpotWidth;
 
     // Per-round State
     private float barHalfWidth;
@@ -73,15 +83,6 @@ public class BlacksmithManager : MonoBehaviour
     void Start()
     {
         Debug.Log("=== BlacksmithManager Start ===");
-        CheckRef(barArea, "barArea");
-        CheckRef(indicator, "indicator");
-        CheckRef(sweetSpot, "sweetSpot");
-        CheckRef(hitText, "hitText");
-        CheckRef(weaponNameText, "weaponNameText");
-        CheckRef(weaponCountText, "weaponCountText");
-        CheckRef(roundText, "roundText");
-        CheckRef(timerText, "timerText");
-        CheckRef(resultText, "resultText");
 
         if (summaryPanel != null) summaryPanel.SetActive(false);
 
@@ -89,21 +90,11 @@ public class BlacksmithManager : MonoBehaviour
         StartSession();
     }
 
-    void CheckRef(Object obj, string name)
-    {
-        if (obj == null)
-            Debug.LogError("[Missing] " + name);
-        else
-            Debug.Log("[OK] " + name);
-    }
-
-    // สุ่มจำนวนและชนิดอาวุธสำหรับ Session นี้
     void GenerateWeaponSession()
     {
-        totalWeapons = Random.Range(3, 7); // สุ่ม 3-6 ชิ้น
+        totalWeapons = Random.Range(3, 7);
         weaponsThisSession.Clear();
 
-        // สุ่มชนิดอาวุธ (อนุญาตให้ซ้ำได้)
         for (int i = 0; i < totalWeapons; i++)
         {
             int randomIndex = Random.Range(0, weaponDatabase.Count);
@@ -111,8 +102,6 @@ public class BlacksmithManager : MonoBehaviour
         }
 
         Debug.Log($"Session: {totalWeapons} weapons");
-        foreach (var w in weaponsThisSession)
-            Debug.Log($"  - {w.weaponName} ({w.basePrice}G)");
     }
 
     void StartSession()
@@ -125,7 +114,7 @@ public class BlacksmithManager : MonoBehaviour
         barHalfWidth = (barArea.rect.width / 2f) - 20f;
 
         UpdateTotalEarningsUI();
-        resultText.text = "";
+        if (resultText != null) resultText.text = "";
 
         StartNextWeapon();
     }
@@ -142,20 +131,23 @@ public class BlacksmithManager : MonoBehaviour
         currentRound = 0;
         hitCount = 0;
         comboCount = 0;
-        currentSweetSpotWidth = startSweetSpotWidth;
 
-        weaponNameText.text = $"Forging: {currentWeapon.weaponName}";
-        weaponCountText.text = $"WEAPON: {currentWeaponIndex + 1}/{totalWeapons}";
+        // เปลี่ยนสีอาวุธบนทั่ง
+        if (weaponRenderer != null)
+            weaponRenderer.material.SetColor(BaseColor, currentWeapon.metalColor);
 
+        if (weaponNameText != null)
+            weaponNameText.text = $"Forging: {currentWeapon.weaponName}";
+        if (weaponCountText != null)
+            weaponCountText.text = $"WEAPON: {currentWeaponIndex + 1}/{totalWeapons}";
         if (earningsText != null)
             earningsText.text = $"Value: {currentWeapon.basePrice}G";
 
         UpdateComboUI();
-        hitText.text = "";
-        resultText.text = "";
+        if (hitText != null) hitText.text = "";
+        if (resultText != null) resultText.text = "";
 
-        Debug.Log($"Starting weapon {currentWeaponIndex + 1}/{totalWeapons}: {currentWeapon.weaponName}");
-
+        Debug.Log($"Starting: {currentWeapon.weaponName}");
         StartNextRound();
     }
 
@@ -168,19 +160,20 @@ public class BlacksmithManager : MonoBehaviour
         }
 
         currentRound++;
-        roundText.text = $"ROUND: {currentRound}/{roundsPerWeapon}";
+        if (roundText != null)
+            roundText.text = $"ROUND: {currentRound}/{roundsPerWeapon}";
 
         // Sweet Spot เล็กลงทุกรอบ
-        currentSweetSpotWidth = Mathf.Max(
+        float sweetWidth = Mathf.Max(
             minSweetSpotWidth,
             startSweetSpotWidth - (sweetSpotShrinkPerRound * (currentRound - 1))
         );
-        sweetSpot.sizeDelta = new Vector2(currentSweetSpotWidth, sweetSpot.sizeDelta.y);
+        sweetSpot.sizeDelta = new Vector2(sweetWidth, sweetSpot.sizeDelta.y);
 
         // สุ่มตำแหน่ง Sweet Spot
-        float maxOffset = barHalfWidth - (currentSweetSpotWidth / 2f);
-        float sweetSpotX = Random.Range(-maxOffset, maxOffset);
-        sweetSpot.anchoredPosition = new Vector2(sweetSpotX, sweetSpot.anchoredPosition.y);
+        float maxOffset = barHalfWidth - (sweetWidth / 2f);
+        float sweetX = Random.Range(-maxOffset, maxOffset);
+        sweetSpot.anchoredPosition = new Vector2(sweetX, sweetSpot.anchoredPosition.y);
 
         // Reset ตัวชี้
         indicatorPosX = -barHalfWidth;
@@ -189,9 +182,7 @@ public class BlacksmithManager : MonoBehaviour
 
         currentTime = timePerRound;
         isRoundActive = true;
-        hitText.text = "";
-
-        Debug.Log($"Round {currentRound}/{roundsPerWeapon} | SweetSpot width: {currentSweetSpotWidth}");
+        if (hitText != null) hitText.text = "";
     }
 
     void Update()
@@ -214,10 +205,13 @@ public class BlacksmithManager : MonoBehaviour
 
         indicator.anchoredPosition = new Vector2(indicatorPosX, indicator.anchoredPosition.y);
 
-        // นับเวลา
+        // Timer
         currentTime -= Time.deltaTime;
-        timerText.text = $"Time: {Mathf.CeilToInt(currentTime)}s";
-        timerText.color = currentTime <= 1f ? Color.red : Color.white;
+        if (timerText != null)
+        {
+            timerText.text = $"Time: {Mathf.CeilToInt(currentTime)}s";
+            timerText.color = currentTime <= 1f ? Color.red : Color.white;
+        }
 
         if (currentTime <= 0f)
         {
@@ -225,7 +219,7 @@ public class BlacksmithManager : MonoBehaviour
             return;
         }
 
-        // กด Space ตี
+        // กด Space
         if (Input.GetKeyDown(KeyCode.Space))
         {
             TryHit();
@@ -236,14 +230,12 @@ public class BlacksmithManager : MonoBehaviour
     {
         if (!isRoundActive) return;
 
-        float sweetSpotMin = sweetSpot.anchoredPosition.x - (sweetSpot.sizeDelta.x / 2f);
-        float sweetSpotMax = sweetSpot.anchoredPosition.x + (sweetSpot.sizeDelta.x / 2f);
-        bool isHit = indicatorPosX >= sweetSpotMin && indicatorPosX <= sweetSpotMax;
+        float sweetMin = sweetSpot.anchoredPosition.x - (sweetSpot.sizeDelta.x / 2f);
+        float sweetMax = sweetSpot.anchoredPosition.x + (sweetSpot.sizeDelta.x / 2f);
+        bool isHit = indicatorPosX >= sweetMin && indicatorPosX <= sweetMax;
 
-        if (isHit)
-            RegisterHit();
-        else
-            RegisterMiss();
+        if (isHit) RegisterHit();
+        else RegisterMiss();
     }
 
     void RegisterHit()
@@ -252,12 +244,26 @@ public class BlacksmithManager : MonoBehaviour
         hitCount++;
         comboCount++;
 
-        hitText.text = "HIT!";
-        hitText.color = Color.green;
+        if (hitText != null)
+        {
+            hitText.text = "HIT!";
+            hitText.color = Color.green;
+        }
 
         UpdateComboUI();
-        Debug.Log($"HIT! Round {currentRound} | hitCount: {hitCount}");
 
+        // เล่น Animation ค้อน
+        if (hammerAnimation != null)
+            hammerAnimation.PlaySwing();
+
+        // เล่น Spark Effect
+        if (sparkEffect != null)
+            sparkEffect.PlaySparks();
+
+        // Flash แสงเตา
+        StartCoroutine(ForgeFlash());
+
+        Debug.Log($"HIT! Round {currentRound} | hitCount: {hitCount}");
         StartCoroutine(NextRoundDelay());
     }
 
@@ -266,13 +272,28 @@ public class BlacksmithManager : MonoBehaviour
         isRoundActive = false;
         comboCount = 0;
 
-        hitText.text = "MISS!";
-        hitText.color = Color.red;
+        if (hitText != null)
+        {
+            hitText.text = "MISS!";
+            hitText.color = Color.red;
+        }
 
         UpdateComboUI();
-        Debug.Log($"MISS! Round {currentRound} | hitCount: {hitCount}");
-
+        Debug.Log($"MISS! Round {currentRound}");
         StartCoroutine(NextRoundDelay());
+    }
+
+    // Flash แสงเตาตอน HIT
+    IEnumerator ForgeFlash()
+    {
+        if (forgeGlowLight == null) yield break;
+
+        float originalIntensity = forgeGlowLight.intensity;
+        forgeGlowLight.intensity = 10f;  // สว่างวาบ
+
+        yield return new WaitForSeconds(0.1f);
+
+        forgeGlowLight.intensity = originalIntensity;
     }
 
     IEnumerator NextRoundDelay()
@@ -281,7 +302,6 @@ public class BlacksmithManager : MonoBehaviour
         StartNextRound();
     }
 
-    // จบอาวุธชิ้นนี้ → คำนวณเงินที่ได้
     void FinishWeapon()
     {
         isRoundActive = false;
@@ -290,31 +310,33 @@ public class BlacksmithManager : MonoBehaviour
         int earned = Mathf.RoundToInt(currentWeapon.basePrice * hitPercent);
         totalEarnings += earned;
 
-        // สร้างข้อความสรุปสำหรับอาวุธนี้
         string grade = GetGrade(hitPercent);
-        string summaryLine = $"{currentWeapon.weaponName}: {hitCount}/{roundsPerWeapon} HIT ({grade}) → {earned}G";
+        string summaryLine = $"{currentWeapon.weaponName}: {hitCount}/{roundsPerWeapon} HIT ({grade}) -> {earned}G";
         summaryLines.Add(summaryLine);
 
-        // แสดงผลชั่วคราวก่อนไปอาวุธต่อไป
-        resultText.text = $"{currentWeapon.weaponName} done!\n{hitCount}/{roundsPerWeapon} HIT = {earned}G ({grade})";
-        resultText.color = hitPercent >= 0.8f ? Color.green :
-                           hitPercent >= 0.5f ? Color.yellow : Color.red;
+        // เปลี่ยนสีอาวุธให้เป็นสีเหล็กเย็น (เสร็จแล้ว)
+        if (weaponRenderer != null)
+            weaponRenderer.material.SetColor(BaseColor, new Color(0.4f, 0.4f, 0.45f));
+
+        if (resultText != null)
+        {
+            resultText.text = $"{currentWeapon.weaponName} done!\n{hitCount}/{roundsPerWeapon} HIT = {earned}G ({grade})";
+            resultText.color = hitPercent >= 0.8f ? Color.green :
+                               hitPercent >= 0.5f ? Color.yellow : Color.red;
+        }
 
         UpdateTotalEarningsUI();
-
-        Debug.Log($"Weapon finished: {currentWeapon.weaponName} | {hitCount}/{roundsPerWeapon} HIT = {earned}G ({hitPercent*100:F0}%)");
-
         currentWeaponIndex++;
         StartCoroutine(NextWeaponDelay());
     }
 
     string GetGrade(float hitPercent)
     {
-        if (hitPercent >= 1.0f)  return "S - Perfect!";
-        if (hitPercent >= 0.8f)  return "A - Great";
-        if (hitPercent >= 0.6f)  return "B - Good";
-        if (hitPercent >= 0.4f)  return "C - OK";
-        if (hitPercent >= 0.2f)  return "D - Poor";
+        if (hitPercent >= 1.0f) return "S - Perfect!";
+        if (hitPercent >= 0.8f) return "A - Great";
+        if (hitPercent >= 0.6f) return "B - Good";
+        if (hitPercent >= 0.4f) return "C - OK";
+        if (hitPercent >= 0.2f) return "D - Poor";
         return "F - Failed";
     }
 
@@ -336,34 +358,33 @@ public class BlacksmithManager : MonoBehaviour
             totalEarningsText.text = $"Total: {totalEarnings}G";
     }
 
-    // จบทุกอาวุธ → แสดงสรุป
     void EndSession()
     {
         isGameOver = true;
         isRoundActive = false;
 
-        hitText.text = "";
-        timerText.text = "";
-        roundText.text = "";
-        weaponNameText.text = "Session Complete!";
+        if (hitText != null) hitText.text = "";
+        if (timerText != null) timerText.text = "";
+        if (roundText != null) roundText.text = "";
+        if (weaponNameText != null) weaponNameText.text = "Session Complete!";
 
-        // สร้างข้อความสรุปทั้งหมด
         string summary = "=== SUMMARY ===\n\n";
         foreach (string line in summaryLines)
             summary += line + "\n";
         summary += $"\nTotal Earned: {totalEarnings}G";
 
-        resultText.text = $"All done! Total: {totalEarnings}G";
-        resultText.color = Color.yellow;
+        if (resultText != null)
+        {
+            resultText.text = $"All done!\nTotal: {totalEarnings}G";
+            resultText.color = Color.yellow;
+        }
 
-        // แสดง Summary Panel ถ้ามี
         if (summaryPanel != null && summaryText != null)
         {
             summaryPanel.SetActive(true);
             summaryText.text = summary;
         }
 
-        Debug.Log("=== Session Complete ===");
-        Debug.Log(summary);
+        Debug.Log("=== Session Complete ===\n" + summary);
     }
 }

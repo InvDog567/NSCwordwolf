@@ -1,4 +1,4 @@
-﻿// Assets/Scripts/GameManager.cs
+﻿// Assets/Scripts/GameManager66.cs
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -7,8 +7,13 @@ using System.Collections.Generic;
 
 public class GameManager66 : MonoBehaviour
 {
-    [Header("=== UI Glass ===")]
-    public Image glassImage;
+    [Header("=== 3D Liquid ===")]
+    public Renderer liquidRenderer;         // ลาก "Liquid" Object มาใส่
+
+    [Header("=== UI Glass (ถ้ายังมี) ===")]
+    public Image glassImage;                // ถ้าไม่มีแล้วปล่อยว่างได้
+
+    [Header("=== Slot UI ===")]
     public Image slot1Image;
     public Image slot2Image;
 
@@ -18,7 +23,6 @@ public class GameManager66 : MonoBehaviour
     public TextMeshProUGUI timerText;
     public TextMeshProUGUI resultText;
     public TextMeshProUGUI mixHintText;
-    public GameObject colorButtonsPanel;
     public Button submitButton;
 
     [Header("=== Recipe UI ===")]
@@ -30,9 +34,11 @@ public class GameManager66 : MonoBehaviour
     public float timePerOrder = 20f;
     public int totalOrders = 5;
 
-    private List<DrinkData> drinkDatabase = new List<DrinkData>();
+    // URP Property
+    private static readonly int BaseColor = Shader.PropertyToID("_BaseColor");
 
-    // ===== ระบบสูตรผสมสีแบบใหม่ — ใช้ List + Tolerance =====
+    // Database
+    private List<DrinkData> drinkDatabase = new List<DrinkData>();
     private List<RecipeEntry> recipeList = new List<RecipeEntry>();
 
     private class RecipeEntry
@@ -42,6 +48,7 @@ public class GameManager66 : MonoBehaviour
         public Color result;
     }
 
+    // State
     private DrinkData currentOrder;
     private int currentScore = 0;
     private int currentOrderCount = 0;
@@ -55,19 +62,6 @@ public class GameManager66 : MonoBehaviour
     void Start()
     {
         Debug.Log("=== GameManager Start ===");
-
-        CheckRef(glassImage, "glassImage");
-        CheckRef(slot1Image, "slot1Image");
-        CheckRef(slot2Image, "slot2Image");
-        CheckRef(orderText, "orderText");
-        CheckRef(scoreText, "scoreText");
-        CheckRef(timerText, "timerText");
-        CheckRef(resultText, "resultText");
-        CheckRef(mixHintText, "mixHintText");
-        CheckRef(colorButtonsPanel, "colorButtonsPanel");
-        CheckRef(submitButton, "submitButton");
-        CheckRef(recipePanel, "recipePanel");
-        CheckRef(recipeText, "recipeText");
 
         SetupRecipes();
 
@@ -91,30 +85,21 @@ public class GameManager66 : MonoBehaviour
         StartGame();
     }
 
-    void CheckRef(Object obj, string name)
-    {
-        if (obj == null)
-            Debug.LogError("❌ " + name + " ยังไม่ได้ผูกใน Inspector!");
-        else
-            Debug.Log("✅ " + name + " OK");
-    }
-
-    // ===== ตั้งค่าสูตรผสมสี =====
     void SetupRecipes()
     {
-        Color red = new Color(1f, 0.15f, 0.15f);
-        Color yellow = new Color(1f, 1f, 0.2f);
-        Color blue = new Color(0.2f, 0.3f, 1f);
-        Color white = new Color(0.95f, 0.95f, 0.95f);
+        Color red    = new Color(1f, 0.15f, 0.15f);
+        Color yellow = new Color(1f, 0.85f, 0.2f);
+        Color blue   = new Color(0.2f, 0.4f, 1f);
+        Color white  = new Color(0.95f, 0.95f, 0.95f);
 
-        AddRecipe(red, yellow, new Color(1f, 0.6f, 0f));        // ส้ม
-        AddRecipe(red, blue, new Color(0.6f, 0f, 0.8f));        // ม่วง
-        AddRecipe(red, white, new Color(1f, 0.4f, 0.6f));       // ชมพู
-        AddRecipe(yellow, blue, new Color(0.2f, 0.8f, 0.2f));   // เขียว
-        AddRecipe(yellow, white, new Color(1f, 1f, 0.6f));      // เหลืองอ่อน
-        AddRecipe(blue, white, new Color(0.6f, 0.75f, 1f));     // ฟ้าอ่อน
+        AddRecipe(red, yellow, new Color(1f, 0.6f, 0f));
+        AddRecipe(red, blue,   new Color(0.6f, 0f, 0.8f));
+        AddRecipe(red, white,  new Color(1f, 0.4f, 0.6f));
+        AddRecipe(yellow, blue,  new Color(0.2f, 0.8f, 0.2f));
+        AddRecipe(yellow, white, new Color(1f, 1f, 0.6f));
+        AddRecipe(blue, white,   new Color(0.6f, 0.75f, 1f));
 
-        Debug.Log("✅ Recipes setup: " + recipeList.Count);
+        Debug.Log("Recipes setup: " + recipeList.Count);
     }
 
     void AddRecipe(Color a, Color b, Color result)
@@ -122,7 +107,6 @@ public class GameManager66 : MonoBehaviour
         recipeList.Add(new RecipeEntry { colorA = a, colorB = b, result = result });
     }
 
-    // เช็คว่าสี 2 สีใกล้เคียงกันไหม (Tolerance กว้างพอรองรับค่าสีคลาดเคลื่อนจากปุ่ม)
     bool ColorsClose(Color a, Color b, float tolerance = 0.25f)
     {
         return Mathf.Abs(a.r - b.r) < tolerance &&
@@ -130,44 +114,37 @@ public class GameManager66 : MonoBehaviour
                Mathf.Abs(a.b - b.b) < tolerance;
     }
 
-    // ผสมสีตามสูตร ถ้าไม่เจอ = เฉลี่ยสี
     Color MixColors(Color a, Color b)
     {
         foreach (var recipe in recipeList)
         {
-            bool matchForward = ColorsClose(a, recipe.colorA) && ColorsClose(b, recipe.colorB);
+            bool matchForward  = ColorsClose(a, recipe.colorA) && ColorsClose(b, recipe.colorB);
             bool matchBackward = ColorsClose(a, recipe.colorB) && ColorsClose(b, recipe.colorA);
 
             if (matchForward || matchBackward)
             {
-                Debug.Log("✅ Recipe matched → " + recipe.result);
+                Debug.Log("Recipe matched: " + recipe.result);
                 return recipe.result;
             }
         }
 
-        Debug.Log("⚠️ No matching recipe, averaging colors. A=" + a + " B=" + b);
+        Debug.Log("No recipe found, averaging");
         return new Color((a.r + b.r) / 2f, (a.g + b.g) / 2f, (a.b + b.b) / 2f, 1f);
     }
 
-    // ===== Drink Database =====
     void SetupDatabase()
     {
         drinkDatabase = new List<DrinkData>
         {
-            new DrinkData { drinkName = "Orange Juice",
-                            drinkColor = new Color(1f, 0.6f, 0f) },
-            new DrinkData { drinkName = "Grape Juice",
-                            drinkColor = new Color(0.6f, 0f, 0.8f) },
-            new DrinkData { drinkName = "Watermelon Juice",
-                            drinkColor = new Color(1f, 0.4f, 0.6f) },
-            new DrinkData { drinkName = "Kiwi Smoothie",
-                            drinkColor = new Color(0.2f, 0.8f, 0.2f) },
-            new DrinkData { drinkName = "Lemonade",
-                            drinkColor = new Color(1f, 1f, 0.6f) },
-            new DrinkData { drinkName = "Blue Soda",
-                            drinkColor = new Color(0.6f, 0.75f, 1f) },
+            new DrinkData { drinkName = "Orange Juice",     drinkColor = new Color(1f, 0.6f, 0f) },
+            new DrinkData { drinkName = "Grape Juice",      drinkColor = new Color(0.6f, 0f, 0.8f) },
+            new DrinkData { drinkName = "Watermelon Juice", drinkColor = new Color(1f, 0.4f, 0.6f) },
+            new DrinkData { drinkName = "Kiwi Smoothie",    drinkColor = new Color(0.2f, 0.8f, 0.2f) },
+            new DrinkData { drinkName = "Lemonade",         drinkColor = new Color(1f, 1f, 0.6f) },
+            new DrinkData { drinkName = "Blue Soda",        drinkColor = new Color(0.6f, 0.75f, 1f) },
         };
-        Debug.Log("✅ Database: " + drinkDatabase.Count + " drinks");
+
+        Debug.Log("Database setup: " + drinkDatabase.Count + " drinks");
     }
 
     void StartGame()
@@ -180,8 +157,6 @@ public class GameManager66 : MonoBehaviour
 
     public void NextOrder()
     {
-        Debug.Log("=== NextOrder === count: " + currentOrderCount);
-
         if (currentOrderCount >= totalOrders)
         {
             EndGame();
@@ -200,7 +175,7 @@ public class GameManager66 : MonoBehaviour
         isPlaying = true;
         currentOrderCount++;
 
-        Debug.Log($"✅ Order: {currentOrder.drinkName} | isPlaying = {isPlaying}");
+        Debug.Log("Order: " + currentOrder.drinkName);
     }
 
     void ResetSlots()
@@ -209,7 +184,14 @@ public class GameManager66 : MonoBehaviour
         color2 = Color.clear;
         selectStep = 0;
 
-        glassImage.color = Color.white;
+        // Reset UI Glass
+        if (glassImage != null)
+            glassImage.color = Color.white;
+
+        // Reset 3D Liquid
+        SetLiquidColor(Color.white);
+
+        // Reset Slots
         if (slot1Image != null) slot1Image.color = Color.grey;
         if (slot2Image != null) slot2Image.color = Color.grey;
         if (mixHintText != null) mixHintText.text = "Pick 2 colors to mix";
@@ -217,11 +199,12 @@ public class GameManager66 : MonoBehaviour
 
     void Update()
     {
+        // กด E เปิด/ปิด Recipe Panel
         if (Input.GetKeyDown(KeyCode.E))
         {
             isRecipeOpen = !isRecipeOpen;
-            recipePanel.SetActive(isRecipeOpen);
-            Debug.Log("Recipe Panel: " + isRecipeOpen);
+            if (recipePanel != null)
+                recipePanel.SetActive(isRecipeOpen);
         }
 
         if (!isPlaying) return;
@@ -233,18 +216,19 @@ public class GameManager66 : MonoBehaviour
         if (currentTime <= 0f)
         {
             isPlaying = false;
-            ShowResult(false, "⏰ Time's Up!");
+            ShowResult(false, "Time's Up!");
             StartCoroutine(NextOrderDelay());
         }
     }
 
+    // เรียกจากขวด 3D (BartenderInteraction) หรือปุ่มสี UI
     public void SelectColor(Color color)
     {
-        Debug.Log("🔵 SelectColor() called: " + color);
+        Debug.Log("SelectColor: " + color);
 
         if (!isPlaying)
         {
-            Debug.LogWarning("⚠️ ไม่ทำงานเพราะ isPlaying = false");
+            Debug.LogWarning("isPlaying = false");
             return;
         }
 
@@ -254,7 +238,7 @@ public class GameManager66 : MonoBehaviour
             if (slot1Image != null) slot1Image.color = color1;
             if (mixHintText != null) mixHintText.text = "Pick the 2nd color";
             selectStep = 1;
-            Debug.Log("✅ เลือกสีที่ 1 แล้ว → selectStep = 1");
+            Debug.Log("Color 1 selected: " + color1);
         }
         else if (selectStep == 1)
         {
@@ -262,40 +246,57 @@ public class GameManager66 : MonoBehaviour
             if (slot2Image != null) slot2Image.color = color2;
 
             Color mixed = MixColors(color1, color2);
-            glassImage.color = mixed;
-            if (mixHintText != null) mixHintText.text = "Mixed! Press SERVE";
 
+            // เปลี่ยนสี UI Glass (ถ้ามี)
+            if (glassImage != null)
+                glassImage.color = mixed;
+
+            // เปลี่ยนสี 3D Liquid
+            SetLiquidColor(mixed);
+
+            if (mixHintText != null) mixHintText.text = "Mixed! Press SERVE";
             selectStep = 2;
-            Debug.Log("✅ เลือกสีที่ 2 แล้ว → selectStep = 2, Mixed = " + mixed);
+
+            Debug.Log("Color 2 selected: " + color2 + " | Mixed: " + mixed);
         }
         else
         {
+            // กดใหม่หลังเลือกครบ 2 สี = Reset แล้วเริ่มใหม่
             color1 = color;
             color2 = Color.clear;
             if (slot1Image != null) slot1Image.color = color1;
             if (slot2Image != null) slot2Image.color = Color.grey;
-            glassImage.color = Color.white;
+
+            if (glassImage != null) glassImage.color = Color.white;
+            SetLiquidColor(Color.white);
+
             if (mixHintText != null) mixHintText.text = "Pick the 2nd color";
             selectStep = 1;
-            Debug.Log("🔄 Reset แล้วเลือกสีใหม่ → selectStep = 1");
+
+            Debug.Log("Reset, Color 1 selected: " + color1);
         }
+    }
+
+    // เปลี่ยนสี 3D Liquid ผ่าน URP _BaseColor
+    void SetLiquidColor(Color color)
+    {
+        if (liquidRenderer != null)
+            liquidRenderer.material.SetColor(BaseColor, color);
     }
 
     public void SubmitDrink()
     {
-        Debug.Log("🟢 SubmitDrink() ถูกเรียกแล้ว!");
-        Debug.Log("isPlaying = " + isPlaying + " | selectStep = " + selectStep);
+        Debug.Log("SubmitDrink called | isPlaying=" + isPlaying + " | selectStep=" + selectStep);
 
         if (!isPlaying)
         {
-            Debug.LogWarning("⚠️ หยุดที่ isPlaying = false");
+            Debug.LogWarning("isPlaying = false");
             return;
         }
 
         if (selectStep < 2)
         {
-            Debug.LogWarning("⚠️ หยุดที่ selectStep < 2 (เลือกสีไม่ครบ)");
-            resultText.text = "⚠️ Pick 2 colors first!";
+            resultText.text = "Pick 2 colors first!";
             resultText.color = Color.yellow;
             return;
         }
@@ -311,11 +312,11 @@ public class GameManager66 : MonoBehaviour
         {
             int bonus = Mathf.RoundToInt(currentTime) * 10;
             currentScore += 100 + bonus;
-            ShowResult(true, $"✅ Correct! +{100 + bonus} pts");
+            ShowResult(true, $"Correct! +{100 + bonus} pts");
         }
         else
         {
-            ShowResult(false, "❌ Wrong Mix!");
+            ShowResult(false, "Wrong Mix!");
             StartCoroutine(ShowCorrectColorRoutine());
         }
 
@@ -340,7 +341,11 @@ public class GameManager66 : MonoBehaviour
     {
         yield return new WaitForSeconds(0.5f);
         resultText.text += $"\nCorrect: {currentOrder.drinkName}";
-        glassImage.color = currentOrder.drinkColor;
+
+        // แสดงสีที่ถูกต้องทั้ง UI และ 3D
+        if (glassImage != null)
+            glassImage.color = currentOrder.drinkColor;
+        SetLiquidColor(currentOrder.drinkColor);
     }
 
     IEnumerator NextOrderDelay()
@@ -357,9 +362,8 @@ public class GameManager66 : MonoBehaviour
     void EndGame()
     {
         isPlaying = false;
-        colorButtonsPanel.SetActive(false);
-        submitButton.interactable = false;
-        orderText.text = "🎉 Game Over!";
+        if (submitButton != null) submitButton.interactable = false;
+        orderText.text = "Game Over!";
         resultText.text = $"Final Score: {currentScore}";
         resultText.color = Color.yellow;
         timerText.text = "";
