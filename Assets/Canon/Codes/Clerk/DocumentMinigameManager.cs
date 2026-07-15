@@ -19,6 +19,7 @@ public class DocumentMinigameManager : MonoBehaviour
     public LedgerDisplayUI ledgerDisplay;
     public DeskHUDUI hudUI;
     public ResultsScreenUI resultsScreen;
+    public GameObject DoccumentEnabler;
 
     [Header("Customer")]
     [Tooltip("Drag your existing placeholder character here. It lives in the scene and gets moved around.")]
@@ -42,6 +43,7 @@ public class DocumentMinigameManager : MonoBehaviour
     void Awake()
     {
         Instance = this;
+        DoccumentEnabler.SetActive(false);
     }
 
     void Start()
@@ -63,6 +65,8 @@ public class DocumentMinigameManager : MonoBehaviour
         // Unlock cursor so player can look around the desk
         Cursor.lockState = CursorLockMode.None;
         Cursor.visible = true;
+
+        DoccumentEnabler.SetActive(true);
 
         BuildQueue();
         onMinigameStart?.Invoke();
