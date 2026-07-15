@@ -18,6 +18,7 @@ public class VotePhaseManager : MonoBehaviour
     public TMP_Text phaseText;
     public TMP_Text timerText;
     public TMP_Text voteLogText;
+    public DiscussionManager discussionManager;
 
     [Header("Current State")]
     public Phase currentPhase = Phase.Discussion;
@@ -41,6 +42,9 @@ public string arsonistWinSceneName;    // player was arsonist, villagers won (ar
         if (voteButtonsContainer != null)
             voteButtonsContainer.SetActive(true);
 
+        if (discussionManager == null)
+            discussionManager = GetComponent<DiscussionManager>();
+
         StartCoroutine(RunDiscussionPhase());
     }
 
@@ -54,6 +58,9 @@ public string arsonistWinSceneName;    // player was arsonist, villagers won (ar
         if (phaseText != null)
             phaseText.text = "Discussion Phase";
 
+        if (discussionManager != null)
+            discussionManager.BeginDiscussion();
+
         while (timer > 0f)
         {
             timer -= Time.deltaTime;
@@ -63,6 +70,9 @@ public string arsonistWinSceneName;    // player was arsonist, villagers won (ar
         }
 
         Debug.Log("=== DISCUSSION PHASE ENDED ===");
+
+        if (discussionManager != null)
+            discussionManager.StopDiscussion();
 
         StartCoroutine(RunVotingPhase());
     }

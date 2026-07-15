@@ -27,7 +27,7 @@ public class NPCChatController : MonoBehaviour
 
     [Header("NPC Identity")]
     [SerializeField] private string npcName = "Eldric";
-    [SerializeField] private NPCRole hiddenRole = NPCRole.Villager;
+    [SerializeField] private PlayerRole.Role hiddenRole = PlayerRole.Role.Villager;
 
     [TextArea(2, 5)]
     [SerializeField] private string personality =
@@ -66,6 +66,7 @@ public class NPCChatController : MonoBehaviour
     private bool _isBusy;
     private CancellationTokenSource _activeRequestCts;
     private Player _player;
+    private PlayerRole _roleComponent;
     private NPCMemory _npcMemory;
     private bool _chatOpen;
     private string _lastResponse = string.Empty;
@@ -75,18 +76,35 @@ public class NPCChatController : MonoBehaviour
     public bool isChatActive => _chatOpen;
     public string LongTermMemorySummary => longTermMemorySummary;
     public string LastResponse => _lastResponse;
+    public PlayerRole.Role HiddenRole => hiddenRole;
 
     private void Awake()
     {
         FindChatCanvasIfNeeded();
         _player = GameObject.FindObjectOfType<Player>();
+        _roleComponent = GetComponent<PlayerRole>();
         _npcMemory = GetComponent<NPCMemory>();
 
         InitializeConversation();
         CloseChat();
     }
 
-    private void OnDestroy() => CancelActiveRequest();
+    private void Start()
+    {
+        SyncAssignedRoleFromGameManager();
+        DiscussionRoster.Register(this);
+    }
+
+    private void OnDisable()
+    {
+        DiscussionRoster.Register(this);
+    }
+
+    private void OnDestroy()
+    {
+        DiscussionRoster.Register(this);
+        CancelActiveRequest();
+    }
 
     public void OpenChat()
     {
@@ -120,6 +138,30 @@ public class NPCChatController : MonoBehaviour
     {
         currentGameState = gameState ?? string.Empty;
         RefreshDeveloperPrompt();
+    }
+
+    public void SetAssignedRole(PlayerRole.Role assignedRole)
+    {
+        hiddenRole = assignedRole;
+        RefreshDeveloperPrompt();
+    }
+
+    public void SyncAssignedRoleFromGameManager()
+    {
+        if (GameManager.Instance == null)
+            return;
+
+        if (_roleComponent == null)
+            _roleComponent = GetComponent<PlayerRole>();
+
+        if (_roleComponent == null || _roleComponent.isPlayer)
+            return;
+
+        int npcIndex = _roleComponent.npcIndex;
+        if (npcIndex < 0 || npcIndex >= GameManager.Instance.savedNPCRoles.Count)
+            return;
+
+        SetAssignedRole(GameManager.Instance.savedNPCRoles[npcIndex]);
     }
 
     public void InitializeConversation()
@@ -329,10 +371,7 @@ public class NPCChatController : MonoBehaviour
         sb.AppendLine($"Personality: {personality}");
         sb.AppendLine($"Situation: {currentGameState}");
 
-        if (hiddenRole == NPCRole.Werewolf)
-            sb.AppendLine("SECRET: You are the werewolf. Lie and deflect suspicion.");
-        else
-            sb.AppendLine("SECRET: You are an innocent villager. Tell the truth.");
+        AppendRoleInstructions(sb);
 
         if (!string.IsNullOrWhiteSpace(relationships))
         {
@@ -361,6 +400,75 @@ public class NPCChatController : MonoBehaviour
         sb.AppendLine($"English difficulty: {englishDifficulty}");
         sb.AppendLine($"Grammar tense: {targetGrammarTense}");
         return sb.ToString().Trim();
+    }
+
+    private void AppendRoleInstructions(StringBuilder sb)
+    {
+        switch (hiddenRole)
+        {
+            case PlayerRole.Role.Werewolf:
+                sb.AppendLine("SECRET ROLE: You are a Werewolf. Hide your role, protect fellow Werewolves, and deflect suspicion without inventing witnessed facts.");
+                AppendWerewolfTeammates(sb);
+                break;
+            case PlayerRole.Role.Arsonist:
+                sb.AppendLine("SECRET ROLE: You are an Arsonist. Hide your role, mislead the village, and avoid drawing attention to your targets.");
+                break;
+            case PlayerRole.Role.Seer:
+                sb.AppendLine("SECRET ROLE: You are the Seer. You may share only role information you personally discovered, and may keep your role secret for safety.");
+                break;
+            case PlayerRole.Role.Doctor:
+                sb.AppendLine("SECRET ROLE: You are the Doctor. You may protect villagers at night. Do not claim this role unless it helps the village.");
+                break;
+            case PlayerRole.Role.Jailer:
+                sb.AppendLine("SECRET ROLE: You are the Jailer. You may jail a target. Do not claim this role unless it helps the village.");
+                break;
+            case PlayerRole.Role.Witch:
+                sb.AppendLine("SECRET ROLE: You are the Witch. You have limited potions. Do not reveal your role or potion use unless it helps the village.");
+                break;
+            case PlayerRole.Role.Gunner:
+                sb.AppendLine("SECRET ROLE: You are the Gunner. Use public evidence and personal memories before deciding whom to trust.");
+                break;
+            case PlayerRole.Role.Vigilante:
+                sb.AppendLine("SECRET ROLE: You are the Vigilante. Use public evidence and personal memories before deciding whom to trust.");
+                break;
+            default:
+                sb.AppendLine("SECRET ROLE: You are a Villager. Seek the truth using only public discussion and things you personally witnessed.");
+                break;
+        }
+    }
+
+    public string BuildDiscussionDeveloperPrompt()
+    {
+        return BuildDeveloperPrompt();
+    }
+
+    private void AppendWerewolfTeammates(StringBuilder sb)
+    {
+        if (GameManager.Instance == null || GameManager.Instance.savedNPCRoles.Count == 0)
+            return;
+
+        if (_roleComponent == null)
+            _roleComponent = GetComponent<PlayerRole>();
+
+        if (_roleComponent == null)
+            return;
+
+        var teammateIndices = new List<int>();
+        for (int i = 0; i < GameManager.Instance.savedNPCRoles.Count; i++)
+        {
+            if (i == _roleComponent.npcIndex ||
+                !GameManager.Instance.npcAlive[i] ||
+                GameManager.Instance.savedNPCRoles[i] != PlayerRole.Role.Werewolf)
+                continue;
+
+            teammateIndices.Add(i);
+        }
+
+        if (GameManager.Instance.playerRole == PlayerRole.Role.Werewolf)
+            sb.AppendLine("YOUR LIVING WEREWOLF TEAMMATE: the player.");
+
+        if (teammateIndices.Count > 0)
+            sb.AppendLine("YOUR LIVING WEREWOLF TEAMMATES (NPC indices): " + string.Join(", ", teammateIndices) + ".");
     }
 
     private void CancelActiveRequest()

@@ -50,8 +50,6 @@ public class NPCWaypointWalker : MonoBehaviour
             return;
         }
  
-        Debug.Log($"[NPCWaypointWalker] '{gameObject.name}' starting. IsOnNavMesh: {_agent.isOnNavMesh}");
- 
         StartCoroutine(DelayedStart());
     }
  
@@ -68,7 +66,6 @@ public class NPCWaypointWalker : MonoBehaviour
             yield break;
         }
  
-        Debug.Log($"[NPCWaypointWalker] '{gameObject.name}' confirmed on NavMesh. Starting route.");
         StartCoroutine(WaypointRoutine());
     }
  

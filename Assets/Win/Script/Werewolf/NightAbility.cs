@@ -200,6 +200,44 @@ public class NightAbility : MonoBehaviour
                 infoText.text = "Killed";
                 target.isDead = true;
                 pendingDisable = target.gameObject;
+
+                // --- WITNESS CHECK (Player kill) ---
+                if (GameManager.Instance != null)
+                {
+                    PlayerRole[] allRoles = FindObjectsOfType<PlayerRole>();
+                    foreach (var pr in allRoles)
+                    {
+                        if (pr.npcIndex == -1 || pr.npcIndex == target.npcIndex || pr.isDead) continue;
+                        if (!pr.gameObject.activeInHierarchy) continue;
+
+                        var nightBehavior = pr.GetComponent<NpcNightBehavior>();
+                        float detectRadius = (nightBehavior != null) ? nightBehavior.detectionRadius : 15f;
+
+                        float dist = Vector3.Distance(pr.transform.position, target.transform.position);
+                        if (dist <= detectRadius)
+                        {
+                            bool canSee = true;
+                            if (nightBehavior != null && nightBehavior.requireLineOfSight)
+                            {
+                                Vector3 dir = (target.transform.position - pr.transform.position).normalized;
+                                if (Physics.Raycast(pr.transform.position + Vector3.up, dir, dist, nightBehavior.sightObstacles))
+                                {
+                                    canSee = false;
+                                }
+                            }
+
+                            if (canSee)
+                            {
+                                if (!GameManager.Instance.witnessedMurderers.Contains(-1))
+                                {
+                                    GameManager.Instance.witnessedMurderers.Add(-1);
+                                }
+                                Debug.Log($"[WITNESS] NPC {pr.npcIndex} witnessed PLAYER murdering NPC {target.npcIndex}!");
+                            }
+                        }
+                    }
+                }
+                // ---------------------
             }
         }
         else

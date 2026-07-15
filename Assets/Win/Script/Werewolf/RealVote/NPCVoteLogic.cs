@@ -91,6 +91,12 @@ public class NPCVoteLogic : MonoBehaviour
                     baseScore += 1f;
                 }
 
+                if (GameManager.Instance.witnessedMurderers.Contains(target))
+                {
+                    baseScore += 5f;
+                    Debug.Log($"[VOTE LOGIC] Voter {voter} knows {target} is a murderer!");
+                }
+
                 scores[target] = baseScore;
             }
 
@@ -110,6 +116,12 @@ public class NPCVoteLogic : MonoBehaviour
 
                 if (GameManager.Instance.playerDoused)
                     playerScore += 1f;
+
+                if (GameManager.Instance.witnessedMurderers.Contains(-1))
+                {
+                    playerScore += 5f;
+                    Debug.Log($"[VOTE LOGIC] Voter {voter} knows PLAYER is a murderer!");
+                }
 
                 scores[-1] = playerScore;
             }

@@ -66,5 +66,5 @@
     "explorer.fileNesting.patterns": {
         "*.sln": "*.csproj"
     },
-    "dotnet.defaultSolution": "NSCwordwolf.sln"
+    "dotnet.defaultSolution": "nscWordWolf.sln"
 }

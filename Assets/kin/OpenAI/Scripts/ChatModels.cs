@@ -4,12 +4,6 @@ using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 
-public enum NPCRole
-{
-    Villager,
-    Werewolf
-}
-
 public enum EnglishDifficulty
 {
     Beginner,

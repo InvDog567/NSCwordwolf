@@ -49,6 +49,7 @@ public class PlayerRoleRandomizer : MonoBehaviour
 
     [Header("Scenes")]
     public string daySceneName;
+    public string jobRandomizerSceneName;
 
     [Header("Current Role")]
     public Role currentRole;
@@ -197,7 +198,14 @@ public class PlayerRoleRandomizer : MonoBehaviour
             yield return null;
     }
 
-    SceneManager.LoadScene(daySceneName);
+    if (!string.IsNullOrEmpty(jobRandomizerSceneName))
+    {
+        SceneManager.LoadScene(jobRandomizerSceneName);
+    }
+    else
+    {
+        SceneManager.LoadScene(daySceneName);
+    }
 }
 
     IEnumerator PunchScale()
@@ -246,7 +254,14 @@ public class PlayerRoleRandomizer : MonoBehaviour
                 yield return null;
         }
 
-        SceneManager.LoadScene(daySceneName);
+        if (!string.IsNullOrEmpty(jobRandomizerSceneName))
+        {
+            SceneManager.LoadScene(jobRandomizerSceneName);
+        }
+        else
+        {
+            SceneManager.LoadScene(daySceneName);
+        }
     }
 
     public bool HasNightAbility()

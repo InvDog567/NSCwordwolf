@@ -48,6 +48,7 @@ public class GameManager : MonoBehaviour
     [HideInInspector] public int debugForceKillIndex = -1;
     [HideInInspector] public bool wolfKillDoneThisNight = false;
     [HideInInspector] public bool playerKilledByArsonist = false;
+    [HideInInspector] public List<int> witnessedMurderers = new List<int>();
 
     void Awake()
     {
@@ -149,6 +150,16 @@ public class GameManager : MonoBehaviour
 
         Debug.Log("Player role: " + playerRole);
         Debug.Log("Total NPCs: " + savedNPCRoles.Count);
+
+        SyncLoadedNPCChatRoles();
+    }
+
+    private void SyncLoadedNPCChatRoles()
+    {
+        NPCChatController[] chatControllers = FindObjectsOfType<NPCChatController>(true);
+
+        foreach (NPCChatController chatController in chatControllers)
+            chatController.SyncAssignedRoleFromGameManager();
     }
 
         public void ResetNightState()

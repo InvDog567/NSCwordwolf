@@ -1,7 +1,7 @@
 using UnityEngine;
 
 /// <summary>
-/// Place a trigger collider at the edge of the field — walking in starts the minigame.
+/// Place a trigger collider at the edge of the field â€” walking in starts the minigame.
 ///
 /// SETUP REQUIREMENTS:
 /// - This GameObject needs a Collider (set to Is Trigger = true)
@@ -42,6 +42,12 @@ public class FarmingTriggerZone : MonoBehaviour
     private void TryStart(Collider other)
     {
         if (!other.CompareTag("Player")) return;
+
+        if (PlayerJobManager.Instance != null && !PlayerJobManager.Instance.CanPlayMinigame(PlayerJobManager.Job.Farming))
+        {
+            Debug.Log("[FarmingTriggerZone] Player cannot play farming minigame (either not job or not daytime).");
+            return;
+        }
 
         FarmingController fc = FarmingController.Instance;
         if (fc == null)

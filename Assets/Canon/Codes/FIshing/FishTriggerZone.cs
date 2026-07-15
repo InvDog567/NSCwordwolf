@@ -36,6 +36,11 @@ public class FishingTriggerZone : MonoBehaviour
 
         if (_playerLooking && Input.GetKeyDown(KeyCode.E))
         {
+            if (PlayerJobManager.Instance != null && !PlayerJobManager.Instance.CanPlayMinigame(PlayerJobManager.Job.Fishing))
+            {
+                Debug.Log("[FishingTriggerZone] Player cannot play fishing minigame (either not job or not daytime).");
+                return;
+            }
             fishingController.StartFishing();
         }
     }

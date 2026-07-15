@@ -46,7 +46,14 @@ public class DeskInteractable : MonoBehaviour
         wasLooking = looking;
 
         if (looking && Input.GetKeyDown(interactKey))
+        {
+            if (PlayerJobManager.Instance != null && !PlayerJobManager.Instance.CanPlayMinigame(PlayerJobManager.Job.Clerk))
+            {
+                Debug.Log("[DeskInteractable] Player cannot play Clerk minigame (either not job or not daytime).");
+                return;
+            }
             EnterDeskMode();
+        }
     }
 
     bool IsPlayerLookingAtDesk()
