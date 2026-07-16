@@ -4,7 +4,6 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
-using UnityEngine.UI;
 
 public class VotePhaseManager : MonoBehaviour
 {
@@ -15,10 +14,10 @@ public class VotePhaseManager : MonoBehaviour
         Resolved
     }
 
-    [Header("Timers")]
-    public float discussionDuration = 30f;
-    public float votingDuration = 20f;
-    public float resultDelay = 3f;
+    [Header("Phase Timers")]
+    [Min(0f)] public float discussionDuration = 30f;
+    [Min(0f)] public float votingDuration = 20f;
+    [Min(0f)] public float resultDelay = 3f;
 
     [Header("UI")]
     public GameObject voteButtonsContainer;
@@ -50,43 +49,73 @@ public class VotePhaseManager : MonoBehaviour
     private bool votesResolved;
 
     // Key = target index.
-    // Value = amount of votes.
-    // Target -1 means the player.
+    // Value = number of votes.
+    // Target -1 represents the player.
     private readonly Dictionary<int, int> voteTally =
         new Dictionary<int, int>();
-
-    private Button[] voteButtons;
 
     private void Start()
     {
         if (discussionManager == null)
             discussionManager = GetComponent<DiscussionManager>();
 
-        SetupVoteButtons();
+        // Make sure all suspects have an npcAlive entry.
+        SynchronizeNPCAliveList();
+
+        // Keep the voting UI visible.
+        if (voteButtonsContainer != null)
+            voteButtonsContainer.SetActive(true);
+
         ShowVoteMarker(-1);
         ClearVoteLog();
 
         StartCoroutine(RunPhases());
     }
 
-    private void SetupVoteButtons()
+    private void SynchronizeNPCAliveList()
     {
-        if (voteButtonsContainer == null)
-            return;
-
-        // Keep the container visible.
-        voteButtonsContainer.SetActive(true);
-
-        voteButtons = voteButtonsContainer.GetComponentsInChildren<Button>(
-            true
-        );
-
-        // Keep buttons visually enabled from the start.
-        foreach (Button button in voteButtons)
+        if (GameManager.Instance == null)
         {
-            if (button != null)
-                button.interactable = true;
+            Debug.LogError(
+                "GameManager.Instance is null. " +
+                "VotePhaseManager cannot prepare NPC data."
+            );
+
+            return;
         }
+
+        if (GameManager.Instance.npcAlive == null)
+        {
+            Debug.LogError(
+                "GameManager npcAlive list is null. " +
+                "Initialize it inside GameManager."
+            );
+
+            return;
+        }
+
+        if (GameManager.Instance.savedNPCRoles == null)
+        {
+            Debug.LogError(
+                "GameManager savedNPCRoles list is null."
+            );
+
+            return;
+        }
+
+        int requiredNPCCount =
+            GameManager.Instance.savedNPCRoles.Count;
+
+        // Add alive entries for NPCs that are missing.
+        while (GameManager.Instance.npcAlive.Count < requiredNPCCount)
+        {
+            GameManager.Instance.npcAlive.Add(true);
+        }
+
+        Debug.Log(
+            $"NPC data prepared. Roles: {requiredNPCCount}, " +
+            $"Alive entries: {GameManager.Instance.npcAlive.Count}"
+        );
     }
 
     private IEnumerator RunPhases()
@@ -172,56 +201,46 @@ public class VotePhaseManager : MonoBehaviour
 
     public void PlayerVote(int npcIndex)
     {
-        // Buttons remain clickable, but votes only count
-        // during the voting phase.
         if (currentPhase != Phase.Voting)
         {
-            Debug.Log(
-                "Vote ignored because voting has not started."
+            Debug.Log("Voting is not currently active.");
+            ClearButtonSelection();
+            return;
+        }
+
+        if (!IsValidNPCIndex(npcIndex))
+        {
+            Debug.LogError(
+                $"Invalid NPC vote index: {npcIndex}. " +
+                $"npcAlive count: {GetNPCCount()}"
             );
 
             ClearButtonSelection();
             return;
         }
 
-    private bool IsValidNPCIndex(int npcIndex)
-    {
-        if (GameManager.Instance == null)
+        if (!GameManager.Instance.npcAlive[npcIndex])
         {
-            Debug.LogError("GameManager.Instance is null.");
-            return false;
-        }
-
-        if (GameManager.Instance.npcAlive == null)
-        {
-            Debug.LogError("npcAlive is null.");
-            return false;
-        }
-
-        if (npcIndex < 0 || npcIndex >= GameManager.Instance.npcAlive.Count)
-        {
-            Debug.LogError(
-                $"NPC index {npcIndex} is invalid. " +
-                $"npcAlive contains {GameManager.Instance.npcAlive.Count} NPCs."
+            Debug.LogWarning(
+                $"NPC {npcIndex} is already eliminated."
             );
 
-            return false;
+            ClearButtonSelection();
+            return;
         }
 
-        return true;
-    }
-
-        // Clicking the same suspect again changes nothing.
+        // Clicking the current selection again changes nothing.
         if (playerVoteIndex == npcIndex)
         {
             ClearButtonSelection();
             return;
         }
 
-        // Remove the player's old vote.
+        // Remove the player's previous vote.
         if (playerVoteIndex >= 0)
             RemoveVote(playerVoteIndex);
 
+        // Add the new vote.
         playerVoteIndex = npcIndex;
 
         AddVote(playerVoteIndex);
@@ -232,27 +251,41 @@ public class VotePhaseManager : MonoBehaviour
             "You can change your vote before time runs out."
         );
 
-        ClearButtonSelection();
-
         Debug.Log(
             $"Player voted for NPC {playerVoteIndex}"
         );
+
+        ClearButtonSelection();
     }
 
     private void RegisterNPCVote(int voterIndex, int targetIndex)
     {
-        // Ignore delayed NPC votes after voting ends.
+        // Ignore NPC callbacks after voting ends.
         if (currentPhase != Phase.Voting || votesResolved)
             return;
 
         // -1 represents voting for the player.
-        if (targetIndex != -1 && !IsValidNPCIndex(targetIndex))
+        if (targetIndex != -1)
         {
-            Debug.LogWarning(
-                $"NPC {voterIndex} chose invalid target {targetIndex}"
-            );
+            if (!IsValidNPCIndex(targetIndex))
+            {
+                Debug.LogWarning(
+                    $"NPC {voterIndex} selected invalid target " +
+                    $"{targetIndex}."
+                );
 
-            return;
+                return;
+            }
+
+            if (!GameManager.Instance.npcAlive[targetIndex])
+            {
+                Debug.LogWarning(
+                    $"NPC {voterIndex} tried to vote for eliminated " +
+                    $"NPC {targetIndex}."
+                );
+
+                return;
+            }
         }
 
         AddVote(targetIndex);
@@ -302,7 +335,10 @@ public class VotePhaseManager : MonoBehaviour
             SetPhaseText("No votes cast");
             AddVoteLog("No one was executed.");
 
-            StartCoroutine(LoadSceneAfterDelay(daySceneName));
+            StartCoroutine(
+                LoadSceneAfterDelay(daySceneName)
+            );
+
             return;
         }
 
@@ -328,12 +364,16 @@ public class VotePhaseManager : MonoBehaviour
             SetPhaseText("Vote tied");
             AddVoteLog("No one was executed.");
 
-            StartCoroutine(LoadSceneAfterDelay(daySceneName));
+            StartCoroutine(
+                LoadSceneAfterDelay(daySceneName)
+            );
+
             return;
         }
 
         int executedIndex = topCandidates[0];
 
+        // -1 means the player received the most votes.
         if (executedIndex == -1)
         {
             SetPhaseText("You were voted out");
@@ -353,20 +393,33 @@ public class VotePhaseManager : MonoBehaviour
         if (!IsValidNPCIndex(npcIndex))
         {
             Debug.LogError(
-                $"Cannot execute invalid NPC index {npcIndex}"
+                $"Cannot execute invalid NPC index {npcIndex}."
             );
 
-            StartCoroutine(LoadSceneAfterDelay(daySceneName));
+            StartCoroutine(
+                LoadSceneAfterDelay(daySceneName)
+            );
+
             return;
         }
 
         GameManager.Instance.npcAlive[npcIndex] = false;
 
-        SetPhaseText($"NPC {npcIndex} was voted out");
+        SetPhaseText(
+            $"NPC {npcIndex} was voted out"
+        );
+
+        string roleName = "Unknown";
+
+        if (GameManager.Instance.savedNPCRoles != null &&
+            npcIndex < GameManager.Instance.savedNPCRoles.Count)
+        {
+            roleName =
+                GameManager.Instance.savedNPCRoles[npcIndex].ToString();
+        }
 
         Debug.Log(
-            $"NPC {npcIndex} was voted out. " +
-            $"Role: {GameManager.Instance.savedNPCRoles[npcIndex]}"
+            $"NPC {npcIndex} was voted out. Role: {roleName}"
         );
 
         ResolveOutcome();
@@ -377,7 +430,11 @@ public class VotePhaseManager : MonoBehaviour
         if (GameManager.Instance == null)
         {
             Debug.LogError("GameManager.Instance is null.");
-            StartCoroutine(LoadSceneAfterDelay(daySceneName));
+
+            StartCoroutine(
+                LoadSceneAfterDelay(daySceneName)
+            );
+
             return;
         }
 
@@ -385,13 +442,17 @@ public class VotePhaseManager : MonoBehaviour
 
         if (result == 1)
         {
-            string sceneName =
+            bool playerIsArsonist =
                 GameManager.Instance.playerRole ==
-                PlayerRole.Role.Arsonist
-                    ? arsonistWinSceneName
-                    : villagerWinSceneName;
+                PlayerRole.Role.Arsonist;
 
-            StartCoroutine(LoadSceneAfterDelay(sceneName));
+            string winScene = playerIsArsonist
+                ? arsonistWinSceneName
+                : villagerWinSceneName;
+
+            StartCoroutine(
+                LoadSceneAfterDelay(winScene)
+            );
         }
         else if (result == 2)
         {
@@ -401,7 +462,9 @@ public class VotePhaseManager : MonoBehaviour
         }
         else
         {
-            StartCoroutine(LoadSceneAfterDelay(daySceneName));
+            StartCoroutine(
+                LoadSceneAfterDelay(daySceneName)
+            );
         }
     }
 
@@ -413,6 +476,17 @@ public class VotePhaseManager : MonoBehaviour
                npcIndex < GameManager.Instance.npcAlive.Count;
     }
 
+    private int GetNPCCount()
+    {
+        if (GameManager.Instance == null ||
+            GameManager.Instance.npcAlive == null)
+        {
+            return 0;
+        }
+
+        return GameManager.Instance.npcAlive.Count;
+    }
+
     private void ShowVoteMarker(int selectedIndex)
     {
         if (voteMarkers == null)
@@ -421,7 +495,11 @@ public class VotePhaseManager : MonoBehaviour
         for (int i = 0; i < voteMarkers.Length; i++)
         {
             if (voteMarkers[i] != null)
-                voteMarkers[i].SetActive(i == selectedIndex);
+            {
+                voteMarkers[i].SetActive(
+                    i == selectedIndex
+                );
+            }
         }
     }
 
