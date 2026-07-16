@@ -1,257 +1,572 @@
-using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
 using System.Collections;
 using System.Collections.Generic;
+using TMPro;
+using UnityEngine;
+using UnityEngine.EventSystems;
 using UnityEngine.SceneManagement;
 
 public class VotePhaseManager : MonoBehaviour
 {
-    public enum Phase { Discussion, Voting, Resolved }
+    public enum Phase
+    {
+        Discussion,
+        Voting,
+        Resolved
+    }
 
     [Header("Phase Timers")]
-    public float discussionDuration = 30f;
-    public float votingDuration = 20f;
+    [Min(0f)] public float discussionDuration = 30f;
+    [Min(0f)] public float votingDuration = 20f;
+    [Min(0f)] public float resultDelay = 3f;
 
     [Header("UI")]
     public GameObject voteButtonsContainer;
     public TMP_Text phaseText;
     public TMP_Text timerText;
     public TMP_Text voteLogText;
+
+    [Header("Vote Markers")]
+    [Tooltip("Element 0 = NPC 0, Element 1 = NPC 1, etc.")]
+    public GameObject[] voteMarkers;
+
+    [Header("Managers")]
     public DiscussionManager discussionManager;
 
     [Header("Current State")]
     public Phase currentPhase = Phase.Discussion;
 
-    private float timer;
-    private bool playerHasVoted = false;
-    private int playerVoteIndex = -1;
-    private Dictionary<int, int> voteTally = new Dictionary<int, int>();
-
     [Header("Scenes")]
-public string daySceneName;
-public string voteExecutedSceneName;   // player voted out
-public string wolfKilledSceneName;     // wolf killed player
-public string arsonistKilledSceneName; // arsonist ignited player
-public string villagerWinSceneName;    // player was villager-aligned, wolves eliminated
-public string werewolfWinSceneName;    // player was werewolf, wolves won
-public string arsonistWinSceneName;    // player was arsonist, villagers won (arsonist side wins alongside villagers)
+    public string daySceneName;
+    public string voteExecutedSceneName;
+    public string wolfKilledSceneName;
+    public string arsonistKilledSceneName;
+    public string villagerWinSceneName;
+    public string werewolfWinSceneName;
+    public string arsonistWinSceneName;
 
-    void Start()
+    private float timer;
+    private int playerVoteIndex = -1;
+    private bool votesResolved;
+
+    // Key = target index.
+    // Value = number of votes.
+    // Target -1 represents the player.
+    private readonly Dictionary<int, int> voteTally =
+        new Dictionary<int, int>();
+
+    private void Start()
     {
-        if (voteButtonsContainer != null)
-            voteButtonsContainer.SetActive(true);
-
         if (discussionManager == null)
             discussionManager = GetComponent<DiscussionManager>();
 
-        StartCoroutine(RunDiscussionPhase());
+        // Make sure all suspects have an npcAlive entry.
+        SynchronizeNPCAliveList();
+
+        // Keep the voting UI visible.
+        if (voteButtonsContainer != null)
+            voteButtonsContainer.SetActive(true);
+
+        ShowVoteMarker(-1);
+        ClearVoteLog();
+
+        StartCoroutine(RunPhases());
     }
 
-    IEnumerator RunDiscussionPhase()
+    private void SynchronizeNPCAliveList()
+    {
+        if (GameManager.Instance == null)
+        {
+            Debug.LogError(
+                "GameManager.Instance is null. " +
+                "VotePhaseManager cannot prepare NPC data."
+            );
+
+            return;
+        }
+
+        if (GameManager.Instance.npcAlive == null)
+        {
+            Debug.LogError(
+                "GameManager npcAlive list is null. " +
+                "Initialize it inside GameManager."
+            );
+
+            return;
+        }
+
+        if (GameManager.Instance.savedNPCRoles == null)
+        {
+            Debug.LogError(
+                "GameManager savedNPCRoles list is null."
+            );
+
+            return;
+        }
+
+        int requiredNPCCount =
+            GameManager.Instance.savedNPCRoles.Count;
+
+        // Add alive entries for NPCs that are missing.
+        while (GameManager.Instance.npcAlive.Count < requiredNPCCount)
+        {
+            GameManager.Instance.npcAlive.Add(true);
+        }
+
+        Debug.Log(
+            $"NPC data prepared. Roles: {requiredNPCCount}, " +
+            $"Alive entries: {GameManager.Instance.npcAlive.Count}"
+        );
+    }
+
+    private IEnumerator RunPhases()
+    {
+        yield return RunDiscussionPhase();
+        yield return RunVotingPhase();
+    }
+
+    private IEnumerator RunDiscussionPhase()
     {
         currentPhase = Phase.Discussion;
         timer = discussionDuration;
 
-        Debug.Log("=== DISCUSSION PHASE STARTED === duration: " + discussionDuration);
-
-        if (phaseText != null)
-            phaseText.text = "Discussion Phase";
+        SetPhaseText("Discussion Phase");
+        ShowVoteMarker(-1);
 
         if (discussionManager != null)
             discussionManager.BeginDiscussion();
 
-        while (timer > 0f)
-        {
-            timer -= Time.deltaTime;
-            if (timerText != null)
-                timerText.text = Mathf.CeilToInt(timer).ToString();
-            yield return null;
-        }
-
-        Debug.Log("=== DISCUSSION PHASE ENDED ===");
+        yield return RunTimer();
 
         if (discussionManager != null)
             discussionManager.StopDiscussion();
-
-        StartCoroutine(RunVotingPhase());
     }
 
-    IEnumerator RunVotingPhase()
+    private IEnumerator RunVotingPhase()
     {
         currentPhase = Phase.Voting;
         timer = votingDuration;
-
-        Debug.Log("=== VOTING PHASE STARTED === duration: " + votingDuration);
-
-        if (phaseText != null)
-            phaseText.text = "Voting Phase";
-
+        votesResolved = false;
 
         voteTally.Clear();
-        playerHasVoted = false;
         playerVoteIndex = -1;
+
+        ShowVoteMarker(-1);
+        ClearVoteLog();
+
+        SetPhaseText("Voting Phase");
+        AddVoteLog("Choose a suspect.");
 
         if (NPCVoteLogic.Instance != null)
         {
-            Debug.Log("Starting NPC votes...");
-            StartCoroutine(NPCVoteLogic.Instance.RunNPCVotes(
-                votingDuration, RegisterNPCVote));
+            StartCoroutine(
+                NPCVoteLogic.Instance.RunNPCVotes(
+                    votingDuration,
+                    RegisterNPCVote
+                )
+            );
         }
         else
         {
-            Debug.LogWarning("NPCVoteLogic.Instance is NULL - is the script attached?");
+            Debug.LogWarning(
+                "NPCVoteLogic.Instance is null. NPCs will not vote."
+            );
         }
 
-        while (timer > 0f)
-        {
-            timer -= Time.deltaTime;
-            if (timerText != null)
-                timerText.text = Mathf.CeilToInt(timer).ToString();
-            yield return null;
-        }
-
-        Debug.Log("=== VOTING PHASE ENDED === Tally count: " + voteTally.Count);
+        yield return RunTimer();
 
         ResolveVotes();
     }
 
+    private IEnumerator RunTimer()
+    {
+        while (timer > 0f)
+        {
+            timer -= Time.deltaTime;
+
+            if (timerText != null)
+            {
+                timerText.text = Mathf.CeilToInt(
+                    Mathf.Max(0f, timer)
+                ).ToString();
+            }
+
+            yield return null;
+        }
+
+        timer = 0f;
+
+        if (timerText != null)
+            timerText.text = "0";
+    }
+
     public void PlayerVote(int npcIndex)
     {
-        Debug.Log("PlayerVote called with index: " + npcIndex +
-                  " | Current phase: " + currentPhase +
-                  " | Already voted: " + playerHasVoted);
-
         if (currentPhase != Phase.Voting)
         {
-            Debug.LogWarning("Vote blocked - not in Voting phase (current: " + currentPhase + ")");
+            Debug.Log("Voting is not currently active.");
+            ClearButtonSelection();
             return;
         }
 
-        if (playerHasVoted)
+        if (!IsValidNPCIndex(npcIndex))
         {
-            Debug.LogWarning("Vote blocked - player already voted");
+            Debug.LogError(
+                $"Invalid NPC vote index: {npcIndex}. " +
+                $"npcAlive count: {GetNPCCount()}"
+            );
+
+            ClearButtonSelection();
             return;
         }
 
-        playerHasVoted = true;
+        if (!GameManager.Instance.npcAlive[npcIndex])
+        {
+            Debug.LogWarning(
+                $"NPC {npcIndex} is already eliminated."
+            );
+
+            ClearButtonSelection();
+            return;
+        }
+
+        // Clicking the current selection again changes nothing.
+        if (playerVoteIndex == npcIndex)
+        {
+            ClearButtonSelection();
+            return;
+        }
+
+        // Remove the player's previous vote.
+        if (playerVoteIndex >= 0)
+            RemoveVote(playerVoteIndex);
+
+        // Add the new vote.
         playerVoteIndex = npcIndex;
-        AddVote(npcIndex);
 
-        Debug.Log("Player vote registered for NPC " + npcIndex);
+        AddVote(playerVoteIndex);
+        ShowVoteMarker(playerVoteIndex);
 
-        if (voteLogText != null)
-            voteLogText.text += "\nYou voted for NPC " + npcIndex;
+        SetVoteLog(
+            $"You voted for NPC {playerVoteIndex}.\n" +
+            "You can change your vote before time runs out."
+        );
+
+        Debug.Log(
+            $"Player voted for NPC {playerVoteIndex}"
+        );
+
+        ClearButtonSelection();
     }
 
-    void RegisterNPCVote(int voterIndex, int targetIndex)
+    private void RegisterNPCVote(int voterIndex, int targetIndex)
     {
-        Debug.Log("NPC " + voterIndex + " voting for target " + targetIndex);
+        // Ignore NPC callbacks after voting ends.
+        if (currentPhase != Phase.Voting || votesResolved)
+            return;
+
+        // -1 represents voting for the player.
+        if (targetIndex != -1)
+        {
+            if (!IsValidNPCIndex(targetIndex))
+            {
+                Debug.LogWarning(
+                    $"NPC {voterIndex} selected invalid target " +
+                    $"{targetIndex}."
+                );
+
+                return;
+            }
+
+            if (!GameManager.Instance.npcAlive[targetIndex])
+            {
+                Debug.LogWarning(
+                    $"NPC {voterIndex} tried to vote for eliminated " +
+                    $"NPC {targetIndex}."
+                );
+
+                return;
+            }
+        }
+
         AddVote(targetIndex);
 
-        if (voteLogText != null)
-            voteLogText.text += "\nNPC " + voterIndex +
-                " voted for NPC " + targetIndex;
+        string targetName = targetIndex == -1
+            ? "the player"
+            : $"NPC {targetIndex}";
+
+        AddVoteLog(
+            $"NPC {voterIndex} voted for {targetName}."
+        );
+
+        Debug.Log(
+            $"NPC {voterIndex} voted for {targetName}"
+        );
     }
 
-    void AddVote(int targetIndex)
+    private void AddVote(int targetIndex)
     {
         if (!voteTally.ContainsKey(targetIndex))
             voteTally[targetIndex] = 0;
+
         voteTally[targetIndex]++;
-
-        Debug.Log("Vote added for " + targetIndex +
-                  " | Current tally for this target: " + voteTally[targetIndex]);
     }
 
-    void ResolveVotes()
-{
-    currentPhase = Phase.Resolved;
-
-    if (voteTally.Count == 0)
+    private void RemoveVote(int targetIndex)
     {
-        if (phaseText != null)
-            phaseText.text = "No votes cast, no one executed";
-        StartCoroutine(GoToDayAfterDelay());
-        return;
+        if (!voteTally.ContainsKey(targetIndex))
+            return;
+
+        voteTally[targetIndex]--;
+
+        if (voteTally[targetIndex] <= 0)
+            voteTally.Remove(targetIndex);
     }
 
-    int topVotes = -1;
-    foreach (var kvp in voteTally)
+    private void ResolveVotes()
     {
-        if (kvp.Value > topVotes)
-            topVotes = kvp.Value;
+        if (votesResolved)
+            return;
+
+        votesResolved = true;
+        currentPhase = Phase.Resolved;
+
+        if (voteTally.Count == 0)
+        {
+            SetPhaseText("No votes cast");
+            AddVoteLog("No one was executed.");
+
+            StartCoroutine(
+                LoadSceneAfterDelay(daySceneName)
+            );
+
+            return;
+        }
+
+        int highestVotes = 0;
+        List<int> topCandidates = new List<int>();
+
+        foreach (KeyValuePair<int, int> vote in voteTally)
+        {
+            if (vote.Value > highestVotes)
+                highestVotes = vote.Value;
+        }
+
+        foreach (KeyValuePair<int, int> vote in voteTally)
+        {
+            if (vote.Value == highestVotes)
+                topCandidates.Add(vote.Key);
+        }
+
+        PrintVoteResults();
+
+        if (topCandidates.Count > 1)
+        {
+            SetPhaseText("Vote tied");
+            AddVoteLog("No one was executed.");
+
+            StartCoroutine(
+                LoadSceneAfterDelay(daySceneName)
+            );
+
+            return;
+        }
+
+        int executedIndex = topCandidates[0];
+
+        // -1 means the player received the most votes.
+        if (executedIndex == -1)
+        {
+            SetPhaseText("You were voted out");
+
+            StartCoroutine(
+                LoadSceneAfterDelay(voteExecutedSceneName)
+            );
+
+            return;
+        }
+
+        ExecuteNPC(executedIndex);
     }
 
-    List<int> topCandidates = new List<int>();
-    foreach (var kvp in voteTally)
+    private void ExecuteNPC(int npcIndex)
     {
-        if (kvp.Value == topVotes)
-            topCandidates.Add(kvp.Key);
+        if (!IsValidNPCIndex(npcIndex))
+        {
+            Debug.LogError(
+                $"Cannot execute invalid NPC index {npcIndex}."
+            );
+
+            StartCoroutine(
+                LoadSceneAfterDelay(daySceneName)
+            );
+
+            return;
+        }
+
+        GameManager.Instance.npcAlive[npcIndex] = false;
+
+        SetPhaseText(
+            $"NPC {npcIndex} was voted out"
+        );
+
+        string roleName = "Unknown";
+
+        if (GameManager.Instance.savedNPCRoles != null &&
+            npcIndex < GameManager.Instance.savedNPCRoles.Count)
+        {
+            roleName =
+                GameManager.Instance.savedNPCRoles[npcIndex].ToString();
+        }
+
+        Debug.Log(
+            $"NPC {npcIndex} was voted out. Role: {roleName}"
+        );
+
+        ResolveOutcome();
     }
 
-    if (topCandidates.Count > 1)
+    private void ResolveOutcome()
     {
-        Debug.Log("Tie vote between: " + string.Join(", ", topCandidates));
-        if (phaseText != null)
-            phaseText.text = "Vote tied, no one executed";
-        StartCoroutine(GoToDayAfterDelay());
-        return;
-    }
+        if (GameManager.Instance == null)
+        {
+            Debug.LogError("GameManager.Instance is null.");
 
-    int topIndex = topCandidates[0];
+            StartCoroutine(
+                LoadSceneAfterDelay(daySceneName)
+            );
 
-    if (topIndex == -1)
-    {
-        // Player was voted out
-        if (phaseText != null)
-            phaseText.text = "You were voted out";
+            return;
+        }
 
-        StartCoroutine(GoToSceneAfterDelay(voteExecutedSceneName));
-        return;
-    }
+        int result = GameManager.Instance.CheckWinCondition();
 
-    if (phaseText != null)
-        phaseText.text = "NPC " + topIndex + " was voted out";
+        if (result == 1)
+        {
+            bool playerIsArsonist =
+                GameManager.Instance.playerRole ==
+                PlayerRole.Role.Arsonist;
 
-    GameManager.Instance.npcAlive[topIndex] = false;
-    Debug.Log("Voted out NPC " + topIndex +
-        " | Role: " + GameManager.Instance.savedNPCRoles[topIndex]);
+            string winScene = playerIsArsonist
+                ? arsonistWinSceneName
+                : villagerWinSceneName;
 
-    ResolveOutcome();
-}
-
-void ResolveOutcome()
-{
-    int result = GameManager.Instance.CheckWinCondition();
-
-    if (result == 1)
-    {
-        // Villagers side won
-        if (GameManager.Instance.playerRole == PlayerRole.Role.Arsonist)
-            StartCoroutine(GoToSceneAfterDelay(arsonistWinSceneName));
+            StartCoroutine(
+                LoadSceneAfterDelay(winScene)
+            );
+        }
+        else if (result == 2)
+        {
+            StartCoroutine(
+                LoadSceneAfterDelay(werewolfWinSceneName)
+            );
+        }
         else
-            StartCoroutine(GoToSceneAfterDelay(villagerWinSceneName));
-    }
-    else if (result == 2)
-    {
-        // Wolves side won
-        StartCoroutine(GoToSceneAfterDelay(werewolfWinSceneName));
-    }
-    else
-    {
-        StartCoroutine(GoToDayAfterDelay());
-    }
-}
-IEnumerator GoToDayAfterDelay()
-    {
-        yield return new WaitForSeconds(3f);
-        SceneManager.LoadScene(daySceneName);
+        {
+            StartCoroutine(
+                LoadSceneAfterDelay(daySceneName)
+            );
+        }
     }
 
-    IEnumerator GoToSceneAfterDelay(string sceneName)
+    private bool IsValidNPCIndex(int npcIndex)
     {
-        yield return new WaitForSeconds(3f);
+        return GameManager.Instance != null &&
+               GameManager.Instance.npcAlive != null &&
+               npcIndex >= 0 &&
+               npcIndex < GameManager.Instance.npcAlive.Count;
+    }
+
+    private int GetNPCCount()
+    {
+        if (GameManager.Instance == null ||
+            GameManager.Instance.npcAlive == null)
+        {
+            return 0;
+        }
+
+        return GameManager.Instance.npcAlive.Count;
+    }
+
+    private void ShowVoteMarker(int selectedIndex)
+    {
+        if (voteMarkers == null)
+            return;
+
+        for (int i = 0; i < voteMarkers.Length; i++)
+        {
+            if (voteMarkers[i] != null)
+            {
+                voteMarkers[i].SetActive(
+                    i == selectedIndex
+                );
+            }
+        }
+    }
+
+    private void ClearButtonSelection()
+    {
+        if (EventSystem.current != null)
+            EventSystem.current.SetSelectedGameObject(null);
+    }
+
+    private void SetPhaseText(string message)
+    {
+        if (phaseText != null)
+            phaseText.text = message;
+    }
+
+    private void ClearVoteLog()
+    {
+        if (voteLogText != null)
+            voteLogText.text = "";
+    }
+
+    private void SetVoteLog(string message)
+    {
+        if (voteLogText != null)
+            voteLogText.text = message;
+    }
+
+    private void AddVoteLog(string message)
+    {
+        if (voteLogText == null)
+            return;
+
+        if (string.IsNullOrEmpty(voteLogText.text))
+            voteLogText.text = message;
+        else
+            voteLogText.text += "\n" + message;
+    }
+
+    private void PrintVoteResults()
+    {
+        Debug.Log("=== FINAL VOTE RESULTS ===");
+
+        foreach (KeyValuePair<int, int> vote in voteTally)
+        {
+            string targetName = vote.Key == -1
+                ? "Player"
+                : $"NPC {vote.Key}";
+
+            Debug.Log(
+                $"{targetName}: {vote.Value} vote(s)"
+            );
+        }
+    }
+
+    private IEnumerator LoadSceneAfterDelay(string sceneName)
+    {
+        yield return new WaitForSeconds(resultDelay);
+
+        if (string.IsNullOrWhiteSpace(sceneName))
+        {
+            Debug.LogError(
+                "A scene name is missing in VotePhaseManager."
+            );
+
+            yield break;
+        }
+
         SceneManager.LoadScene(sceneName);
     }
 }
