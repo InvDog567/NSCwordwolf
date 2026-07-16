@@ -5,17 +5,21 @@ using TMPro;
 
 public class CarpenterManager : MonoBehaviour
 {
-    [Header("=== References ===")]
+    [Header("=== Core References ===")]
     public VoxelGrid voxelGrid;
     public BlueprintData blueprintData;
     public Material woodNormalMaterial;
     public Material blueprintHintMaterial;
 
+    [Header("=== 3D References ===")]
+    public ChiselAnimation chiselAnimation;    // สิ่ว First Person
+    public WoodChipSpawner chipSpawner;        // เศษไม้กระเด็น
+
     [Header("=== UI ===")]
     public Button submitButton;
     public TextMeshProUGUI resultText;
     public TextMeshProUGUI instructionText;
-    public TextMeshProUGUI blueprintNameText;   // แสดงชื่อแบบพิมพ์ที่สุ่มได้
+    public TextMeshProUGUI blueprintNameText;
 
     private bool isGameOver = false;
 
@@ -29,47 +33,48 @@ public class CarpenterManager : MonoBehaviour
 
         resultText.text = "";
 
-        // แสดงชื่อแบบพิมพ์ที่สุ่มได้
         if (blueprintNameText != null)
             blueprintNameText.text = $"Blueprint: {blueprintData.GetPatternName()}";
 
-        instructionText.text = "Drag the mouse to carve the wood\nFollow the blueprint shape";
+        if (instructionText != null)
+            instructionText.text = "Drag mouse to carve\nFollow the blueprint shape";
 
-        // แสดง Blueprint Hint ตลอดเวลาทันที ไม่ต้องกดปุ่ม
         ShowBlueprintAlways();
     }
 
     void CheckRef(Object obj, string name)
     {
         if (obj == null)
-            Debug.LogError("[Missing] " + name + " ยังไม่ได้ผูกใน Inspector!");
+            Debug.LogError("[Missing] " + name);
         else
             Debug.Log("[OK] " + name);
     }
 
-    // แสดง Blueprint ทันทีตั้งแต่เริ่ม ไม่ต้องกด HINT
     void ShowBlueprintAlways()
     {
         voxelGrid.ShowBlueprintHint(blueprintData, blueprintHintMaterial, woodNormalMaterial);
-        Debug.Log("Blueprint shown automatically");
     }
 
-    // อัปเดต Blueprint ทุกครั้งที่มีการแกะไม้ (เรียกจาก CarveController)
-    public void RefreshBlueprint()
+    // เรียกจาก CarveController ทุกครั้งที่แกะ
+    public void OnVoxelCarved()
     {
-        if (!isGameOver)
-            voxelGrid.ShowBlueprintHint(blueprintData, blueprintHintMaterial, woodNormalMaterial);
+        if (isGameOver) return;
+
+        // เล่น Animation สิ่ว
+        if (chiselAnimation != null)
+            chiselAnimation.PlayStrike();
+
+        // เศษไม้กระเด็น
+        if (chipSpawner != null)
+            chipSpawner.SpawnChips();
+
+        // อัปเดต Blueprint ให้แสดงอยู่เสมอ
+        voxelGrid.ShowBlueprintHint(blueprintData, blueprintHintMaterial, woodNormalMaterial);
     }
 
     public void SubmitCarving()
     {
-        if (isGameOver)
-        {
-            Debug.LogWarning("เกมจบไปแล้ว");
-            return;
-        }
-
-        Debug.Log("SubmitCarving() called");
+        if (isGameOver) return;
 
         float accuracy = voxelGrid.CalculateAccuracy(blueprintData);
         ShowResult(accuracy);
@@ -82,38 +87,20 @@ public class CarpenterManager : MonoBehaviour
         string quality;
         Color color;
 
-        if (accuracy >= 90f)
-        {
-            quality = "Masterwork!";
-            color = new Color(1f, 0.84f, 0f);
-        }
-        else if (accuracy >= 70f)
-        {
-            quality = "Good Quality";
-            color = Color.green;
-        }
-        else if (accuracy >= 50f)
-        {
-            quality = "Rough Shape";
-            color = Color.yellow;
-        }
-        else
-        {
-            quality = "Failed";
-            color = Color.red;
-        }
+        if (accuracy >= 90f)       { quality = "Masterwork!";   color = new Color(1f, 0.84f, 0f); }
+        else if (accuracy >= 70f)  { quality = "Good Quality";  color = Color.green; }
+        else if (accuracy >= 50f)  { quality = "Rough Shape";   color = Color.yellow; }
+        else                       { quality = "Failed";         color = Color.red; }
 
         resultText.text = $"Accuracy: {accuracy:F1}%\n{quality}";
         resultText.color = color;
 
-        Debug.Log($"=== Result === Accuracy: {accuracy:F1}% | Quality: {quality}");
+        Debug.Log($"Result: {accuracy:F1}% | {quality}");
     }
 
     public void ResetCarving()
     {
-        Debug.Log("Reset scene requested");
         UnityEngine.SceneManagement.SceneManager.LoadScene(
-            UnityEngine.SceneManagement.SceneManager.GetActiveScene().name
-        );
+            UnityEngine.SceneManagement.SceneManager.GetActiveScene().name);
     }
 }

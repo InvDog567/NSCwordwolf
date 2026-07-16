@@ -5,7 +5,7 @@ public class CarveController : MonoBehaviour
 {
     [Header("=== References ===")]
     public VoxelGrid voxelGrid;
-    public CarpenterManager carpenterManager;  // ✅ เพิ่มใหม่
+    public CarpenterManager carpenterManager;
     public Camera carveCamera;
 
     [Header("=== Settings ===")]
@@ -17,27 +17,24 @@ public class CarveController : MonoBehaviour
     void Update()
     {
         if (Input.GetMouseButtonDown(0)) isDragging = true;
-        if (Input.GetMouseButtonUp(0)) isDragging = false;
-
-        if (isDragging) TryCarveAtMousePosition();
+        if (Input.GetMouseButtonUp(0))   isDragging = false;
+        if (isDragging) TryCarve();
     }
 
-    void TryCarveAtMousePosition()
+    void TryCarve()
     {
         Ray ray = carveCamera.ScreenPointToRay(Input.mousePosition);
         RaycastHit hit;
 
         if (Physics.Raycast(ray, out hit, maxCarveDistance, voxelLayerMask))
         {
-            GameObject hitObject = hit.collider.gameObject;
-
-            if (voxelGrid.TryGetGridPosition(hitObject, out int row, out int col))
+            if (voxelGrid.TryGetGridPosition(hit.collider.gameObject, out int row, out int col))
             {
                 voxelGrid.CarveVoxel(row, col);
 
-                // ✅ อัปเดต Blueprint ทุกครั้งที่แกะ (ให้ Hint ยังคงแสดงอยู่บน Voxel ที่เหลือ)
+                // เรียก OnVoxelCarved → เล่น Animation + เศษไม้
                 if (carpenterManager != null)
-                    carpenterManager.RefreshBlueprint();
+                    carpenterManager.OnVoxelCarved();
             }
         }
     }
