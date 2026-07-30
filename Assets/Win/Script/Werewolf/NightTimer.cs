@@ -39,7 +39,7 @@ public class NightTimer : MonoBehaviour
     }
     else
     {
-        SceneManager.LoadScene(voteSceneName);
+        SceneLoader.LoadSceneWithLoadingScreen(voteSceneName);
     }
 }
     }

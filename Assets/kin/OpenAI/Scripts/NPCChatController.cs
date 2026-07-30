@@ -92,6 +92,7 @@ public class NPCChatController : MonoBehaviour
     private void Start()
     {
         SyncAssignedRoleFromGameManager();
+        ApplyFixedNpcName();
         DiscussionRoster.Register(this);
     }
 
@@ -162,6 +163,18 @@ public class NPCChatController : MonoBehaviour
             return;
 
         SetAssignedRole(GameManager.Instance.savedNPCRoles[npcIndex]);
+    }
+
+    private void ApplyFixedNpcName()
+    {
+        if (_roleComponent == null)
+            _roleComponent = GetComponent<PlayerRole>();
+
+        if (_roleComponent == null || _roleComponent.isPlayer || _roleComponent.npcIndex < 0)
+            return;
+
+        npcName = DiscussionRoster.GetFixedNpcName(_roleComponent.npcIndex);
+        RefreshDeveloperPrompt();
     }
 
     public void InitializeConversation()
@@ -453,7 +466,7 @@ public class NPCChatController : MonoBehaviour
         if (_roleComponent == null)
             return;
 
-        var teammateIndices = new List<int>();
+        var teammateNames = new List<string>();
         for (int i = 0; i < GameManager.Instance.savedNPCRoles.Count; i++)
         {
             if (i == _roleComponent.npcIndex ||
@@ -461,14 +474,14 @@ public class NPCChatController : MonoBehaviour
                 GameManager.Instance.savedNPCRoles[i] != PlayerRole.Role.Werewolf)
                 continue;
 
-            teammateIndices.Add(i);
+            teammateNames.Add(DiscussionRoster.GetFixedNpcName(i));
         }
 
         if (GameManager.Instance.playerRole == PlayerRole.Role.Werewolf)
             sb.AppendLine("YOUR LIVING WEREWOLF TEAMMATE: the player.");
 
-        if (teammateIndices.Count > 0)
-            sb.AppendLine("YOUR LIVING WEREWOLF TEAMMATES (NPC indices): " + string.Join(", ", teammateIndices) + ".");
+        if (teammateNames.Count > 0)
+            sb.AppendLine("YOUR LIVING WEREWOLF TEAMMATES: " + string.Join(", ", teammateNames) + ".");
     }
 
     private void CancelActiveRequest()

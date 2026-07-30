@@ -93,6 +93,7 @@ public class StartManager : MonoBehaviour
 
     [Header("Scene Loading")]
     [SerializeField] private string gameSceneName = "GameScene";
+    [SerializeField] private MenuPlayChoice menuPlayChoice;
 
     // ========== PRIVATE VARIABLES ==========
 
@@ -199,6 +200,9 @@ public class StartManager : MonoBehaviour
 
     private void PlayGame()
     {
+        if (menuPlayChoice != null && menuPlayChoice.ShowChoices())
+            return;
+
         if (isLoading)
             return;
 

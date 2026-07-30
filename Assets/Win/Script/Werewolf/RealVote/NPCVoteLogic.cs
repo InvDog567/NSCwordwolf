@@ -97,6 +97,13 @@ public class NPCVoteLogic : MonoBehaviour
                     Debug.Log($"[VOTE LOGIC] Voter {voter} knows {target} is a murderer!");
                 }
 
+                // Apply dynamic suspicion modifiers from the discussion phase
+                if (DiscussionManager.DynamicSuspicionModifiers.TryGetValue(target, out float discussionMod))
+                {
+                    baseScore += discussionMod;
+                    Debug.Log($"[VOTE LOGIC] Discussion modifier of {discussionMod:+0.0;-0.0} applied to target {target} by voter {voter}");
+                }
+
                 scores[target] = baseScore;
             }
 
@@ -121,6 +128,13 @@ public class NPCVoteLogic : MonoBehaviour
                 {
                     playerScore += 5f;
                     Debug.Log($"[VOTE LOGIC] Voter {voter} knows PLAYER is a murderer!");
+                }
+
+                // Apply dynamic suspicion modifiers from the discussion phase
+                if (DiscussionManager.DynamicSuspicionModifiers.TryGetValue(-1, out float playerDiscussionMod))
+                {
+                    playerScore += playerDiscussionMod;
+                    Debug.Log($"[VOTE LOGIC] Discussion modifier of {playerDiscussionMod:+0.0;-0.0} applied to Player by voter {voter}");
                 }
 
                 scores[-1] = playerScore;

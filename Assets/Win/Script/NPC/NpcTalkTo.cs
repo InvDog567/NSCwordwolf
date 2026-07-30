@@ -99,7 +99,7 @@ public class NpcTalkTo : MonoBehaviour
     // OPEN DIALOGUE
     // Call this from anywhere — a button, a trigger, another script
     // --------------------------------------------------------
-    public void OpenDialogue()
+    public virtual void OpenDialogue()
     {
         if (_isDialogueOpen) return;
  
@@ -127,7 +127,7 @@ public class NpcTalkTo : MonoBehaviour
     // Call this from a UI close button too:
     // drag the NPC into the button's OnClick and call NPCInteraction.CloseDialogue()
     // --------------------------------------------------------
-    public void CloseDialogue()
+    public virtual void CloseDialogue()
     {
         if (!_isDialogueOpen) return;
  

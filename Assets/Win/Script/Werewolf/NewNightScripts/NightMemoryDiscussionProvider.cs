@@ -43,7 +43,7 @@ public class NightMemoryDiscussionProvider : MonoBehaviour
             string timeStr = m.timeOfNight < 0.3f ? "early in the night" : (m.timeOfNight > 0.7f ? "late in the night" : "in the middle of the night");
             string suspStr = m.wasInSuspiciousArea ? "(Suspicious Location)" : "(Safe Location)";
             
-            sb.AppendLine($"- Saw NPC {m.observedNpcIndex} at the {m.areaName} {timeStr}. {suspStr}");
+            sb.AppendLine($"- Saw {DiscussionRoster.GetFixedNpcName(m.observedNpcIndex)} at the {m.areaName} {timeStr}. {suspStr}");
         }
 
         return sb.ToString();

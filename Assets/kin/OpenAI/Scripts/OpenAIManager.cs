@@ -28,9 +28,46 @@ public class OpenAIManager : MonoBehaviour
 
     private void Awake()
     {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
 
         Instance = this;
         DontDestroyOnLoad(gameObject);
+        LoadApiKey();
+    }
+
+    /// <summary>
+    /// Gets the persistent API manager, creating one with the supplied key file
+    /// when the current scene does not contain one.
+    /// </summary>
+    public static OpenAIManager EnsureInstance(TextAsset keyFile)
+    {
+        if (Instance != null)
+        {
+            if (!Instance.HasValidApiKey && keyFile != null)
+                Instance.ConfigureApiKeyFile(keyFile);
+
+            return Instance;
+        }
+
+        GameObject managerObject = new GameObject("OpenAI Manager");
+        managerObject.SetActive(false);
+
+        OpenAIManager manager = managerObject.AddComponent<OpenAIManager>();
+        manager.apiKeyJson = keyFile;
+
+        managerObject.SetActive(true);
+        return manager;
+    }
+
+    /// <summary>Re-reads an Inspector-assigned JSON key file.</summary>
+    public void ConfigureApiKeyFile(TextAsset keyFile)
+    {
+        apiKeyJson = keyFile;
+        apiKeyOverride = string.Empty;
         LoadApiKey();
     }
 

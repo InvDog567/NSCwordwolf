@@ -19,6 +19,12 @@ public class FishingController : MonoBehaviour
     private bool _lockPosition;
     private Vector3 _lockedPosition;
 
+    [Header("Coin Reward")]
+    [Tooltip("Minimum coins awarded on a successful catch.")]
+    public int minCoinReward = 5;
+    [Tooltip("Maximum coins awarded on a successful catch.")]
+    public int maxCoinReward = 20;
+
     [Header("Minigame Objects")]
     public GameObject[] minigameObjects;
 
@@ -82,6 +88,13 @@ public class FishingController : MonoBehaviour
 
         bool caught = false;
         yield return minigame.RunMinigame(result => caught = result);
+
+        // Award coins only on a successful catch
+        if (caught && PlayerWallet.Instance != null)
+        {
+            int reward = Random.Range(minCoinReward, maxCoinReward + 1);
+            PlayerWallet.Instance.AddCoins(reward);
+        }
 
         SetMinigameObjects(false);
 

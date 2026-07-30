@@ -12,6 +12,12 @@ public class DiscussionRoster : MonoBehaviour
 {
     public static DiscussionRoster Instance { get; private set; }
 
+    private static readonly string[] NpcNames =
+    {
+        "Thomas", "Emily", "Arthur", "Clara", "Samuel", "Lily",
+        "George", "Anna", "Henry", "Daniel", "Jack", "Victor"
+    };
+
     private readonly Dictionary<int, DiscussionNpcProfile> profiles =
         new Dictionary<int, DiscussionNpcProfile>();
 
@@ -28,7 +34,7 @@ public class DiscussionRoster : MonoBehaviour
         roster.profiles[role.npcIndex] = new DiscussionNpcProfile
         {
             npcIndex = role.npcIndex,
-            npcName = controller.NpcName,
+            npcName = GetFixedNpcName(role.npcIndex),
             developerPrompt = controller.BuildDiscussionDeveloperPrompt()
         };
     }
@@ -59,7 +65,14 @@ public class DiscussionRoster : MonoBehaviour
 
         return profiles.TryGetValue(npcIndex, out DiscussionNpcProfile profile)
             ? profile.npcName
-            : "NPC " + npcIndex;
+            : GetFixedNpcName(npcIndex);
+    }
+
+    public static string GetFixedNpcName(int npcIndex)
+    {
+        return npcIndex >= 0 && npcIndex < NpcNames.Length
+            ? NpcNames[npcIndex]
+            : "an unknown villager";
     }
 
     private static DiscussionRoster GetOrCreate()

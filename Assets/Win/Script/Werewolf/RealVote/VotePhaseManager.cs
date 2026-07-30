@@ -32,6 +32,10 @@ public class VotePhaseManager : MonoBehaviour
     [Header("Managers")]
     public DiscussionManager discussionManager;
 
+    [Header("API Key")]
+    [Tooltip("The JSON file containing { \"api_key\": \"...\" }. This lets the Vote scene start discussion even when no OpenAI Manager is already loaded.")]
+    public TextAsset apiKeyFile;
+
     [Header("Current State")]
     public Phase currentPhase = Phase.Discussion;
 
@@ -56,6 +60,15 @@ public class VotePhaseManager : MonoBehaviour
 
     private void Start()
     {
+        // Time.timeScale persists between scenes. A previously closed settings
+        // panel must not leave the vote timer frozen in the discussion phase.
+        Time.timeScale = 1f;
+
+        if (apiKeyFile != null)
+            OpenAIManager.EnsureInstance(apiKeyFile);
+        else if (OpenAIManager.Instance == null)
+            Debug.LogError("[VotePhaseManager] API key file is not assigned. Assign secret.json to Api Key File.");
+
         if (discussionManager == null)
             discussionManager = GetComponent<DiscussionManager>();
 
@@ -247,12 +260,12 @@ public class VotePhaseManager : MonoBehaviour
         ShowVoteMarker(playerVoteIndex);
 
         SetVoteLog(
-            $"You voted for NPC {playerVoteIndex}.\n" +
+            $"You voted for {GetVoteTargetName(playerVoteIndex)}.\n" +
             "You can change your vote before time runs out."
         );
 
         Debug.Log(
-            $"Player voted for NPC {playerVoteIndex}"
+            $"Player voted for {GetVoteTargetName(playerVoteIndex)}"
         );
 
         ClearButtonSelection();
@@ -290,16 +303,15 @@ public class VotePhaseManager : MonoBehaviour
 
         AddVote(targetIndex);
 
-        string targetName = targetIndex == -1
-            ? "the player"
-            : $"NPC {targetIndex}";
+        string voterName = GetVoteTargetName(voterIndex);
+        string targetName = GetVoteTargetName(targetIndex);
 
         AddVoteLog(
-            $"NPC {voterIndex} voted for {targetName}."
+            $"{voterName} voted for {targetName}."
         );
 
         Debug.Log(
-            $"NPC {voterIndex} voted for {targetName}"
+            $"{voterName} voted for {targetName}"
         );
     }
 
@@ -406,7 +418,7 @@ public class VotePhaseManager : MonoBehaviour
         GameManager.Instance.npcAlive[npcIndex] = false;
 
         SetPhaseText(
-            $"NPC {npcIndex} was voted out"
+            $"{GetVoteTargetName(npcIndex)} was voted out"
         );
 
         string roleName = "Unknown";
@@ -419,7 +431,7 @@ public class VotePhaseManager : MonoBehaviour
         }
 
         Debug.Log(
-            $"NPC {npcIndex} was voted out. Role: {roleName}"
+            $"{GetVoteTargetName(npcIndex)} was voted out. Role: {roleName}"
         );
 
         ResolveOutcome();
@@ -487,6 +499,14 @@ public class VotePhaseManager : MonoBehaviour
         return GameManager.Instance.npcAlive.Count;
     }
 
+    private static string GetVoteTargetName(int npcIndex)
+    {
+        if (npcIndex == -1)
+            return "Player";
+
+        return DiscussionRoster.GetFixedNpcName(npcIndex);
+    }
+
     private void ShowVoteMarker(int selectedIndex)
     {
         if (voteMarkers == null)
@@ -546,7 +566,7 @@ public class VotePhaseManager : MonoBehaviour
         {
             string targetName = vote.Key == -1
                 ? "Player"
-                : $"NPC {vote.Key}";
+                : GetVoteTargetName(vote.Key);
 
             Debug.Log(
                 $"{targetName}: {vote.Value} vote(s)"

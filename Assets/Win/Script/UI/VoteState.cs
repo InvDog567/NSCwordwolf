@@ -10,9 +10,15 @@ public class VoteState : MonoBehaviour
 
     void Update()
     {
-        if (GameManager.Instance == null) return;
+        if (voteButton == null)
+            return;
 
-        bool alive = GameManager.Instance.npcAlive[npcIndex];
+        bool hasValidNpc = GameManager.Instance != null &&
+            GameManager.Instance.npcAlive != null &&
+            npcIndex >= 0 &&
+            npcIndex < GameManager.Instance.npcAlive.Count;
+
+        bool alive = hasValidNpc && GameManager.Instance.npcAlive[npcIndex];
         bool votingPhase = votePhaseManager != null &&
             votePhaseManager.currentPhase == VotePhaseManager.Phase.Voting;
 

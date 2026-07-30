@@ -66,6 +66,8 @@ public class PlayerJobManager : MonoBehaviour
     {
         if (jobImage != null)
             originalScale = jobImage.rectTransform.localScale;
+
+            StartJobRandomizer();
     }
 
     public void StartJobRandomizer()
@@ -144,8 +146,32 @@ public class PlayerJobManager : MonoBehaviour
 
     private IEnumerator ForceJobRoutine()
     {
+        float elapsed = 0f;
+        float stepTimer = 0f;
+
+        while (elapsed < shuffleDuration)
+        {
+            elapsed += Time.deltaTime;
+            stepTimer += Time.deltaTime;
+
+            float progress = elapsed / shuffleDuration;
+            float currentSpeed = Mathf.Lerp(fastSpeed, slowSpeed, Mathf.SmoothStep(0f, 1f, progress));
+
+            if (stepTimer >= currentSpeed)
+            {
+                stepTimer = 0f;
+                Job randomJob = (Job)Random.Range(1, 10);
+                SetImage(randomJob);
+                PlayTick();
+            }
+
+            yield return null;
+        }
+
+        // Lander
         currentJob = forcedJob;
         SetImage(currentJob);
+        PlayTick();
         PlayReveal();
 
         yield return new WaitForSeconds(revealDelay);

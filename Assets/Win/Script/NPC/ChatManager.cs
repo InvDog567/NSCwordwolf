@@ -9,9 +9,10 @@ public class ChatManager : MonoBehaviour
     public TMP_InputField inputField;
     public TMP_Text dialogueText;
 
-    private string apiKey = "AIzaSyDYW-qrPAklqhTz64qqW3h5sc2tqSZe6lI";
+    private string apiKey = "";
 
     bool isWaitingForReply = false;
+
 
     public void SendMessage()
     {

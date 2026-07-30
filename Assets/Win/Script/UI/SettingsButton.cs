@@ -20,7 +20,7 @@ public class SettingsButton : MonoBehaviour
         if (settingsPanel != null)
         {
             settingsPanel.SetActive(false);
-            Time.timeScale = 0f;
+            Time.timeScale = 1f;
             Cursor.lockState = CursorLockMode.None;
             Cursor.visible = true;
         }

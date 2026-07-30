@@ -1,6 +1,5 @@
 using UnityEngine;
 using TMPro;
-using UnityEngine.SceneManagement;
 
 public class SceneCountdownTMP : MonoBehaviour
 {
@@ -9,6 +8,7 @@ public class SceneCountdownTMP : MonoBehaviour
     public string nextSceneName;
 
     private float currentTime;
+    private bool hasTransitioned;
 
     void Start()
     {
@@ -24,9 +24,10 @@ public class SceneCountdownTMP : MonoBehaviour
 
         countdownText.text = Mathf.Ceil(currentTime).ToString();
 
-        if (currentTime <= 0)
+        if (currentTime <= 0 && !hasTransitioned)
         {
-            SceneManager.LoadScene(nextSceneName);
+            hasTransitioned = true;
+            SceneLoader.LoadSceneWithLoadingScreen(nextSceneName);
         }
     }
 }

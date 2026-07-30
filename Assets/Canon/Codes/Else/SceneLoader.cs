@@ -6,6 +6,9 @@ using UnityEngine.UI;
 
 public class SceneLoader : MonoBehaviour
 {
+    private const string DefaultLoadingSceneName = "Loading";
+    private static string pendingSceneName;
+
     [Header("Loading UI")]
     [SerializeField] private GameObject loadingPanel;
     [SerializeField] private CanvasGroup loadingCanvasGroup;
@@ -31,9 +34,31 @@ public class SceneLoader : MonoBehaviour
 
     private bool isLoading;
 
+    public static void LoadSceneWithLoadingScreen(string sceneName)
+    {
+        if (string.IsNullOrWhiteSpace(sceneName))
+        {
+            Debug.LogError("SceneLoader: No destination scene was provided.");
+            return;
+        }
+
+        pendingSceneName = sceneName;
+        SceneManager.LoadScene(DefaultLoadingSceneName);
+    }
+
     private void Awake()
     {
         ResetLoadingUI();
+    }
+
+    private void Start()
+    {
+        if (string.IsNullOrWhiteSpace(pendingSceneName))
+            return;
+
+        string destinationScene = pendingSceneName;
+        pendingSceneName = null;
+        LoadScene(destinationScene);
     }
 
     /// <summary>

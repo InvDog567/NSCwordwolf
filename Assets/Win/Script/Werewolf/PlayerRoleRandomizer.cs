@@ -204,41 +204,95 @@ public class PlayerRoleRandomizer : MonoBehaviour
     }
     else
     {
-        SceneManager.LoadScene(daySceneName);
+        SceneLoader.LoadSceneWithLoadingScreen(daySceneName);
     }
 }
 
     IEnumerator PunchScale()
-{
-    if (roleImage == null) yield break;
-
-    Vector3 bigScale = originalScale * revealScaleSize;
-    float t = 0f;
-
-    // Scale up only, stay there
-    while (t < revealScaleDuration)
     {
-        t += Time.deltaTime;
-        float progress = t / revealScaleDuration;
-        roleImage.rectTransform.localScale =
-            Vector3.Lerp(originalScale, bigScale,
-                Mathf.SmoothStep(0f, 1f, progress));
-        yield return null;
-    }
+        if (roleImage == null) yield break;
 
-    // Lock at big scale permanently
-    roleImage.rectTransform.localScale = bigScale;
-}
+        Vector3 bigScale = originalScale * revealScaleSize;
+        float t = 0f;
+
+        // Scale up only, stay there
+        while (t < revealScaleDuration)
+        {
+            t += Time.deltaTime;
+            float progress = t / revealScaleDuration;
+            roleImage.rectTransform.localScale =
+                Vector3.Lerp(originalScale, bigScale,
+                    Mathf.SmoothStep(0f, 1f, progress));
+            yield return null;
+        }
+
+        // Lock at big scale permanently
+        roleImage.rectTransform.localScale = bigScale;
+    }
 
     IEnumerator ForceRoleRoutine()
     {
+        float elapsed = 0f;
+        float stepTimer = 0f;
+
+        while (elapsed < shuffleDuration)
+        {
+            elapsed += Time.deltaTime;
+            stepTimer += Time.deltaTime;
+
+            float progress = elapsed / shuffleDuration;
+            float currentSpeed = Mathf.Lerp(
+                fastSpeed, slowSpeed,
+                Mathf.SmoothStep(0f, 1f, progress));
+
+            if (stepTimer >= currentSpeed)
+            {
+                stepTimer = 0f;
+                Role randomRole = (Role)Random.Range(0, totalRoles);
+                SetImage(randomRole);
+                PlayTick();
+            }
+
+            yield return null;
+        }
+
+        // Extra slow ticks after main shuffle ends so it visibly crawls to a stop
+        float slowElapsed = 0f;
+        float slowDuration = 2f;
+        float extraStepTimer = 0f;
+
+        while (slowElapsed < slowDuration)
+        {
+            slowElapsed += Time.deltaTime;
+            extraStepTimer += Time.deltaTime;
+
+            float slowProgress = slowElapsed / slowDuration;
+            float crawlSpeed = Mathf.Lerp(
+                slowSpeed, 2f,
+                Mathf.SmoothStep(0f, 1f, slowProgress));
+
+            if (extraStepTimer >= crawlSpeed)
+            {
+                extraStepTimer = 0f;
+                Role randomRole = (Role)Random.Range(0, totalRoles);
+                SetImage(randomRole);
+                PlayTick();
+            }
+
+            yield return null;
+        }
+
+        // Land on forced role
         currentRole = forcedRole;
         SetImage(currentRole);
-        PlayReveal();
+        PlayTick();
 
+        yield return new WaitForSeconds(2f);
+
+        PlayReveal();
         StartCoroutine(PunchScale());
 
-        Debug.Log("FORCED role: " + currentRole);
+        Debug.Log("FORCED role landed: " + currentRole);
 
         roleReady = true;
 
@@ -260,7 +314,7 @@ public class PlayerRoleRandomizer : MonoBehaviour
         }
         else
         {
-            SceneManager.LoadScene(daySceneName);
+            SceneLoader.LoadSceneWithLoadingScreen(daySceneName);
         }
     }
 
